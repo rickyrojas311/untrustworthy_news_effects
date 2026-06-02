@@ -20,8 +20,11 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align =
 # 1. Setup
 
 ```{r packages}
-#install.packages(c("aipw", "SuperLearner", "cobalt", "ggplot2", "dplyr", "gridExtra", "kableExtra"))
-install.packages("aipw")
+#install.packages("aipw")
+#install.packages("SuperLearner")
+#install.packages("cobalt")
+#install.packages("gridExtra")
+#install.packages("kableExtra")
 library(aipw)
 library(SuperLearner)
 library(cobalt)
