@@ -1,0 +1,387 @@
+---
+title: "AIPW: Effects of Untrustworthy-News Exposure on 2020 Vote Outcomes"
+author: ""
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+```
+
+---
+
+# 1. Setup
+
+```{r packages}
+#install.packages("aipw")
+#install.packages("SuperLearner")
+#install.packages("cobalt")
+#install.packages("gridExtra")
+#install.packages("kableExtra")
+library(aipw)
+library(SuperLearner)
+library(cobalt)
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(kableExtra)
+
+set.seed(42)
+```
+
+```{r load_data}
+df_raw <- read.csv("master_data_2020.csv", stringsAsFactors = FALSE)
+
+# Drop the 162 respondents who did not complete the post-wave
+# (presvote20post is NA for them — their vote status is unknown)
+df <- df_raw[!is.na(df_raw$presvote20post), ]
+cat("N after dropping post-wave non-respondents:", nrow(df), "\n")
+```
+
+---
+
+# 2. Feature Engineering
+
+Replicates the covariate set from the Python pipeline.
+
+```{r outcomes}
+# Binary outcomes from post-wave vote choice
+df$voted_biden <- as.integer(trimws(df$presvote20post) == "Joe Biden")
+df$voted_trump <- as.integer(trimws(df$presvote20post) == "Donald Trump")
+df$turnout     <- as.integer(
+  !grepl("did not vote", df$presvote20post, ignore.case = TRUE)
+)
+```
+
+```{r digital_literacy}
+# Digital literacy index: extract leading digit from "1 None" / "2 Little" etc.
+tf_cols <- c("tf_adv", "tf_pdf", "tf_spy", "tf_wiki", "tf_cache", "tf_phishing")
+extract_digit <- function(x) {
+  suppressWarnings(as.numeric(sub("^(\\d+).*", "\\1", trimws(as.character(x)))))
+}
+tf_mat           <- sapply(df[, tf_cols], extract_digit)
+df$digital_lit   <- rowMeans(tf_mat, na.rm = TRUE)
+```
+
+```{r linear_scales}
+# Named-vector lookup tables for ordinal scales
+ideo5_lut  <- c("Very liberal"=1, "Liberal"=2, "Moderate"=3,
+                "Conservative"=4, "Very conservative"=5)
+pid7_lut   <- c("Strong Democrat"=1, "Not very strong Democrat"=2,
+                "Lean Democrat"=3, "Independent"=4, "Lean Republican"=5,
+                "Not very strong Republican"=6, "Strong Republican"=7)
+newsint_lut <- c("Hardly at all"=1, "Only now and then"=2,
+                 "Some of the time"=3, "Most of the time"=4)
+intuse_lut  <- c("Less often"=1, "A few times a week"=2,
+                 "About once a day"=3, "Several times a day"=4)
+
+df$ideo5_linear   <- ideo5_lut[df$ideo5]
+df$pid7_linear    <- pid7_lut[df$pid7]
+df$newsint_linear <- newsint_lut[df$newsint]
+df$intuse_linear  <- intuse_lut[df$intuse]
+
+# socmed_use: use regex to handle both hyphen and en-dash encodings in CSV
+df$socmed_linear <- case_when(
+  grepl("Less than 10",        df$socmed_use)  ~ 1L,
+  grepl("10.30 min",           df$socmed_use)  ~ 2L,
+  grepl("31.60 min",           df$socmed_use)  ~ 3L,
+  grepl("1.2 hour",            df$socmed_use)  ~ 4L,
+  grepl("2.3 hour",            df$socmed_use)  ~ 5L,
+  grepl("More than 3",         df$socmed_use)  ~ 6L,
+  TRUE ~ NA_integer_
+)
+```
+
+```{r categorical_covariates}
+# 2016 vote, condensed to four levels; Trump_2016 = baseline
+df$vote16 <- case_when(
+  df$presvote16post == "Hillary Clinton"                              ~ "Clinton",
+  df$presvote16post == "Donald Trump"                                ~ "Trump_2016",
+  is.na(df$presvote16post) |
+    df$presvote16post %in% c("Did not vote", "Did not vote for President") ~ "DidNotVote",
+  TRUE                                                               ~ "Other"
+)
+
+# Set reference levels to match Python baselines
+df$race4  <- factor(df$race4,  levels = c("White",        "Black", "Hispanic", "Other"))
+df$educ4  <- factor(df$educ4,  levels = c("College grad", "HS or less", "Some college", "Postgrad"))
+df$region <- factor(df$region, levels = c("Midwest",      "Northeast", "South", "West"))
+df$vote16 <- factor(df$vote16, levels = c("Trump_2016",   "Clinton", "DidNotVote", "Other"))
+```
+
+```{r complete_cases}
+covariate_cols <- c(
+  "age", "female", "digital_lit",
+  "ideo5_linear", "pid7_linear", "socmed_linear", "newsint_linear", "intuse_linear",
+  "race4", "educ4", "region", "vote16"
+)
+
+keep_cols <- c("untrustworthy_flag", "voted_biden", "voted_trump", "turnout", covariate_cols)
+df_model  <- na.omit(df[, keep_cols])
+cat("Analytic sample (complete cases):", nrow(df_model), "\n")
+
+# Treatment vector and design matrix (no intercept)
+A     <- df_model$untrustworthy_flag
+W_mat <- model.matrix(
+  ~ age + female + digital_lit +
+    ideo5_linear + pid7_linear + socmed_linear + newsint_linear + intuse_linear +
+    race4 + educ4 + region + vote16,
+  data = df_model
+)[, -1]  # drop intercept column
+
+W_df  <- as.data.frame(W_mat)   # aipw expects a data.frame
+cat("Covariates in design matrix:", ncol(W_df), "\n")
+```
+
+---
+
+# 3. Overlap Check (Positivity Assumption)
+
+The overlap (positivity) assumption requires P(W=1|X) ∈ (0,1) for all X in the
+support. We check it by fitting a logistic regression propensity score model and
+inspecting the score distributions across treatment groups.
+
+```{r propensity_model}
+ps_fit <- glm(A ~ ., data = W_df, family = binomial)
+ps     <- predict(ps_fit, type = "response")
+
+# Trim-bound diagnostics
+cat("Propensity score range: [", round(min(ps),4), ",", round(max(ps),4), "]\n")
+cat("Outside [0.05, 0.95]:", sum(ps < 0.05 | ps > 0.95),
+    sprintf("(%.1f%%)\n", 100 * mean(ps < 0.05 | ps > 0.95)))
+cat("Outside [0.10, 0.90]:", sum(ps < 0.10 | ps > 0.90),
+    sprintf("(%.1f%%)\n", 100 * mean(ps < 0.10 | ps > 0.90)))
+```
+
+```{r ess}
+# IPW effective sample size — collapses when extreme weights dominate
+ess_t <- sum(A / ps)^2          / sum((A / ps)^2)
+ess_c <- sum((1-A) / (1-ps))^2  / sum(((1-A) / (1-ps))^2)
+cat(sprintf(
+  "IPW ESS — Treated: %.0f/%d (%.0f%%)   Control: %.0f/%d (%.0f%%)\n",
+  ess_t, sum(A),   100*ess_t/sum(A),
+  ess_c, sum(1-A), 100*ess_c/sum(1-A)
+))
+```
+
+```{r overlap_plots, fig.width=11, fig.height=4}
+ps_df <- data.frame(
+  ps    = ps,
+  logit = log(ps / (1 - ps)),
+  Group = factor(A, labels = c("Control (unexposed)", "Treated (exposed)"))
+)
+
+p_hist <- ggplot(ps_df, aes(x = ps, fill = Group)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 40,
+                 alpha = 0.55, position = "identity") +
+  geom_vline(xintercept = c(0.05, 0.95), linetype = "dashed") +
+  scale_fill_manual(values = c("steelblue", "tomato")) +
+  labs(x = "Propensity Score P(W=1|X)", y = "Density",
+       title = "Propensity Score Distributions",
+       subtitle = "Dashed lines = trim bounds [0.05, 0.95]",
+       fill = NULL) +
+  theme_bw(base_size = 12)
+
+p_logit <- ggplot(ps_df, aes(x = logit, fill = Group)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 40,
+                 alpha = 0.55, position = "identity") +
+  scale_fill_manual(values = c("steelblue", "tomato")) +
+  labs(x = "Log-Odds of Propensity Score", y = "Density",
+       title = "Overlap: Log-Odds Scale",
+       subtitle = "Separation here indicates covariate profiles with weak overlap",
+       fill = NULL) +
+  theme_bw(base_size = 12)
+
+grid.arrange(p_hist, p_logit, ncol = 2)
+```
+
+---
+
+# 4. Covariate Balance
+
+Standardized mean differences (SMD) before weighting. Conventional threshold: |SMD| < 0.1.
+Variables with |SMD| ≥ 0.1 flag the strongest confounders that the AIPW must adjust for.
+
+```{r covariate_balance, fig.width=8, fig.height=7}
+bal <- bal.tab(
+  W_df,
+  treat      = A,
+  thresholds = c(m = 0.1),
+  binary     = "std"
+)
+print(bal)
+
+love.plot(
+  bal,
+  threshold   = 0.1,
+  abs         = TRUE,
+  colors      = c("tomato", "steelblue"),
+  shapes      = c("circle", "circle filled"),
+  title       = "Covariate Balance: |SMD| Before Weighting",
+  sample.names = c("Unadjusted")
+)
+```
+
+---
+
+# 5. AIPW Estimation
+
+We estimate the ATE for each outcome using:
+
+- **Nuisance models**: logistic regression via SuperLearner (`SL.glm`)
+- **Cross-fitting**: 10-fold (`k_split = 10`) to avoid in-sample overfitting bias
+- **Propensity clip**: `g.bound = 0.025` → clips ê(X) to [0.025, 0.975]
+
+```{r aipw_fit, cache=TRUE, results='hide'}
+outcomes_list <- list(
+  "Voted for Biden" = df_model$voted_biden,
+  "Voted for Trump" = df_model$voted_trump,
+  "2020 Turnout"    = df_model$turnout
+)
+
+aipw_objects <- list()
+
+for (nm in names(outcomes_list)) {
+  aipw_objects[[nm]] <- AIPW$new(
+    Y              = outcomes_list[[nm]],
+    A              = A,
+    W              = W_df,
+    Q.SL.library   = "SL.glm",
+    g.SL.library   = "SL.glm",
+    k_split        = 10,
+    verbose        = FALSE
+  )$fit()
+}
+```
+
+```{r aipw_summary}
+for (nm in names(aipw_objects)) {
+  cat("\n===", nm, "===\n")
+  aipw_objects[[nm]]$summary(g.bound = 0.025)
+}
+```
+
+```{r results_table}
+# Collect ATE rows into a summary table
+results_df <- do.call(rbind, lapply(names(aipw_objects), function(nm) {
+  obj <- aipw_objects[[nm]]
+  obj$summary(g.bound = 0.025)
+  res <- obj$result
+  # ATE row only (third row: E[Y(1)]-E[Y(0)])
+  ate_row <- res[grepl("ATE|RD|E\\[Y\\(1\\)\\]-E\\[Y\\(0\\)\\]", rownames(res),
+                       ignore.case = TRUE), , drop = FALSE]
+  if (nrow(ate_row) == 0) ate_row <- res[nrow(res), , drop = FALSE]
+  data.frame(
+    Outcome = nm,
+    ATE     = round(ate_row[[1]], 4),
+    SE      = round(ate_row[[2]], 4),
+    CI_lo   = round(ate_row[[3]], 4),
+    CI_hi   = round(ate_row[[4]], 4),
+    p_value = round(ate_row[[5]], 4),
+    stringsAsFactors = FALSE
+  )
+}))
+
+results_df$Sig <- ifelse(results_df$p_value < 0.01, "**",
+                  ifelse(results_df$p_value < 0.05, "*", ""))
+
+kable(results_df,
+      col.names = c("Outcome", "ATE", "SE", "95% CI Lower", "95% CI Upper", "p-value", ""),
+      caption   = "AIPW Estimates: Effect of Untrustworthy-News Exposure on 2020 Vote  (* p<0.05, ** p<0.01)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+```{r forest_plot, fig.width=6.5, fig.height=3.5}
+ggplot(results_df, aes(x = ATE, y = Outcome, colour = ATE > 0)) +
+  geom_point(size = 3) +
+  geom_errorbarh(aes(xmin = CI_lo, xmax = CI_hi), height = 0.2, linewidth = 0.9) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "black") +
+  scale_colour_manual(values = c("steelblue", "tomato"), guide = "none") +
+  labs(x = "Average Treatment Effect (AIPW, 95% CI)",
+       y = NULL,
+       title = "Effect of Untrustworthy-News Exposure on 2020 Vote Outcomes") +
+  theme_bw(base_size = 12)
+```
+
+---
+
+# 6. AIPW Diagnostics
+
+Built-in `aipw` diagnostics: propensity score distribution and IPW weight distribution
+after g.bound clipping. Extreme weights signal residual overlap problems.
+
+```{r aipw_diagnostics, fig.width=11, fig.height=4}
+for (nm in names(aipw_objects)) {
+  obj <- aipw_objects[[nm]]
+  obj$summary(g.bound = 0.025)
+  p1 <- obj$plot.p_score()
+  p2 <- obj$plot.ip_weights()
+  grid.arrange(
+    p1 + ggtitle(paste(nm, "— Propensity Scores")),
+    p2 + ggtitle(paste(nm, "— IPW Weights")),
+    ncol = 2
+  )
+}
+```
+
+---
+
+# 7. Sensitivity Analysis: g.bound
+
+We re-estimate the Voted-for-Biden ATE under tighter and looser propensity
+trimming to assess sensitivity of results to the choice of clip threshold.
+
+```{r sensitivity, cache=TRUE, results='hide'}
+g_bounds <- c(0.01, 0.025, 0.05, 0.10)
+
+biden_obj <- AIPW$new(
+  Y            = df_model$voted_biden,
+  A            = A,
+  W            = W_df,
+  Q.SL.library = "SL.glm",
+  g.SL.library = "SL.glm",
+  k_split      = 10,
+  verbose      = FALSE
+)$fit()
+```
+
+```{r sensitivity_table}
+sens_rows <- lapply(g_bounds, function(gb) {
+  biden_obj$summary(g.bound = gb)
+  res     <- biden_obj$result
+  ate_row <- res[grepl("ATE|RD|E\\[Y\\(1\\)\\]-E\\[Y\\(0\\)\\]", rownames(res),
+                       ignore.case = TRUE), , drop = FALSE]
+  if (nrow(ate_row) == 0) ate_row <- res[nrow(res), , drop = FALSE]
+  data.frame(
+    g.bound = gb,
+    clip_range = sprintf("[%.3f, %.3f]", gb, 1 - gb),
+    ATE    = round(ate_row[[1]], 4),
+    SE     = round(ate_row[[2]], 4),
+    CI_lo  = round(ate_row[[3]], 4),
+    CI_hi  = round(ate_row[[4]], 4),
+    p      = round(ate_row[[5]], 4)
+  )
+})
+
+sens_df <- do.call(rbind, sens_rows)
+
+kable(sens_df,
+      col.names = c("g.bound", "Clip range", "ATE", "SE", "95% CI Lo", "95% CI Hi", "p"),
+      caption   = "Sensitivity to propensity score clipping — Voted for Biden outcome") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+---
+
+# Session Info
+
+```{r session_info}
+sessionInfo()
+```
