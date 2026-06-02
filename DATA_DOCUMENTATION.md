@@ -9,7 +9,7 @@
   2. **Passive web-browsing trace data** from YouGov Pulse, covering **Oct 2 – Nov 9, 2020**. These appear at the end of the file (`untrustworthy_n`, `total_n`, `hard_news_n`, …) and are derived counts of URL visits classified against curated website lists.
 - **All ID/sample**: `caseid` (1,151 unique). All respondents satisfied `consent == "I consent"` and `votereg == "Yes"` (so these two columns carry no information — they're filter screens).
 
-> ⚠️ **Marked-uncertain items** (no codebook supplied) are flagged inline with **[uncertain]**. The supplementary PDF gives the analysis-ready operationalizations of the key constructs but does not name every survey item; questions referenced only by item code (e.g. `conf02`, `election_behaviors_3`, `tf_adv`) are documented from response-value inspection rather than verbatim wording.
+> ⚠️ **Marked-uncertain items** are flagged inline with **[uncertain]**. The bundled `replication_script.Rmd` was checked against every survey item; the script **only uses ~25 of the 235 columns** (listed at the bottom of this doc under "Variables actually used by the published replication"). All other columns are carry-over fields from the YouGov survey instrument administered alongside Pulse browsing collection — they are present in the CSV but were not analyzed in the published paper, and the included replication code provides no definition for them.
 
 ---
 
@@ -173,14 +173,14 @@ Each `*_n` column is the count of URL visits from that respondent during the dat
 |---|---|---|
 | `total_n` | All visited URLs | Total browsing volume for the respondent (any URL). Used as the denominator for "share of info diet" calculations. |
 | `untrustworthy_n` | The paper's own curated list of **1,796 untrustworthy websites** (compiled per the Methods, extending Allcott & Gentzkow, Grinberg et al., and Guess et al.). | The headline treatment variable. |
-| `untrustworthy_ng_n` | **[uncertain]** A more restrictive version of the untrustworthy list. The `_ng` suffix is undocumented in the supplementary PDF. Reasonable candidates: "No Google" (excludes visits referred from Google search), "No Guess" (untrustworthy sites that don't overlap with Guess et al.'s list), or "Newsguard"-derived. **Confirm against the replication R/Python code before relying on this column.** |
-| `grinberg_n` | Grinberg et al. (2019) Science paper's untrustworthy-site list (a much smaller list — Guess et al. (2019) used a 42-site version of this). | Used for cross-study comparison. |
-| `untrustworthy_conservative_n` | Untrustworthy sites coded as ideologically conservative. | Slant inferred from Bakshy et al. (2015) audience-ideology scores. |
-| `untrustworthy_liberal_n` | Untrustworthy sites coded as ideologically liberal. | Far fewer respondents have nonzero visits here than to conservative untrustworthy (20 vs 58 unique nonzero counts). |
-| `hard_news_n` | Visits to "hard news" sites — operationalized as the **5,471 sites contained in Bakshy et al. (2015) plus all NewsGuard-rated sites, excluding any flagged as repeatedly publishing false content**. | |
-| `hard_news_conservative_n` | Hard-news visits classified as conservative-slanted. | |
-| `hard_news_liberal_n` | Hard-news visits classified as liberal-slanted. | |
-| `fact_check_n` | Visits to fact-checking sites: **PolitiFact, the Washington Post Fact Checker, Factcheck.org, Snopes** (per Guess et al. 2020). | |
+| `untrustworthy_ng_n` | **[uncertain — not used in the replication]** A second untrustworthy-list cut. The `_ng` suffix is never referenced in `replication_script.Rmd` and never defined in the supplementary materials. Reasonable guesses: "No Google" (excludes Google-search-referred visits) or "Non-Guess" (untrustworthy sites that don't overlap with Guess et al.'s list). **Do not use without confirming meaning with the dataset author.** |
+| `grinberg_n` | **Guess et al. (2020)'s untrustworthy-website list of 490 sites** — *not* Grinberg et al. (2019)'s smaller list, despite the column name. The replication script titles the relevant section "Analyses using _only_ Guess's list (ie Grinberg)" (Reviewer 3, Comment 8), confirming the columns named `grinberg_*` actually contain Guess et al. (2020) counts. The naming reflects that Guess et al.'s list was itself derived from Grinberg et al. Used as a robustness check against the 1,796-site list. |
+| `untrustworthy_conservative_n` | Untrustworthy sites coded as ideologically conservative. Slant likely from Bakshy et al. (2015) audience-ideology scores. **Not used by the replication script.** |
+| `untrustworthy_liberal_n` | Untrustworthy sites coded as ideologically liberal. Far fewer respondents have nonzero visits here than to conservative untrustworthy (20 vs 58 unique nonzero counts). **Not used by the replication script.** |
+| `hard_news_n` | Visits to "hard news" sites — operationalized as the **5,471 sites contained in Bakshy et al. (2015) plus all NewsGuard-rated sites, excluding any flagged as repeatedly publishing false content**. Used in Reviewer 1 Comment 3 supplementary analyses. |
+| `hard_news_conservative_n` | Hard-news visits classified as conservative-slanted. **Not used by the replication script.** |
+| `hard_news_liberal_n` | Hard-news visits classified as liberal-slanted. **Not used by the replication script.** |
+| `fact_check_n` | Visits to fact-checking sites: **PolitiFact, the Washington Post Fact Checker, Factcheck.org, Snopes** (per Guess et al. 2020). Used in Reviewer 2 Comment 6 ("fact-checking mismatch") supplementary analyses. |
 
 ### Flag columns (`*_flag`) — binary exposure indicators
 
@@ -193,7 +193,7 @@ Each `*_flag` is `1` if the corresponding `*_n` is ≥ 1 (i.e., the respondent w
 | Column | Numerator / denominator |
 |---|---|
 | `percentage_of_total` | `untrustworthy_n / total_n` — share of *all* web visits that went to untrustworthy sites. |
-| `percentage_of_total_ng` | `untrustworthy_ng_n / total_n`. **[uncertain — see note on `_ng` above.]** |
+| `percentage_of_total_ng` | `untrustworthy_ng_n / total_n`. **[uncertain — `_ng` is never referenced in the replication script. See note on `_ng` above.]** |
 | `grinberg_percentage_of_total` | `grinberg_n / total_n`. |
 | `untrustworthy_conservative_percentage_info_diet` | `untrustworthy_conservative_n` as share of the respondent's hard-news ("information") diet rather than total browsing. NA when the respondent has zero hard-news visits (90 cases). |
 | `untrustworthy_liberal_percentage_info_diet` | Same construction for liberal-slanted untrustworthy. |
@@ -206,8 +206,8 @@ Each `*_flag` is `1` if the corresponding `*_n` is ≥ 1 (i.e., the respondent w
 | `mean_ideology` | Weighted-mean ideological slant of the respondent's hard-news diet, computed from Bakshy et al. (2015)–style audience-alignment scores per visited domain. Negative values = more liberal-leaning diet; positive = more conservative-leaning. NA when the respondent has too few hard-news visits to estimate (141 cases). |
 | `ideology_bin` | Decile (1–10) of `mean_ideology` across the sample. 1 = most liberal media diet, 10 = most conservative. NA when `mean_ideology` is NA. |
 | `total_n_bin_all` | Tertile (1, 2, 3) of `total_n` (total browsing volume) across the full sample — low, medium, high web activity. |
-| `hard_news_bin` | Tertile of `hard_news_n` among those with at least one hard-news visit. **[uncertain — `hard_news_bin` and `hard_news_bin_all` both have 3 unique values; the distinction may be the conditional vs. unconditional sample.]** |
-| `hard_news_bin_all` | Tertile of `hard_news_n` across the **full sample**. |
+| `hard_news_bin` | Tertile of `hard_news_n`. **[uncertain — `hard_news_bin` and `hard_news_bin_all` both have 3 unique values; the distinction is most likely conditional-on-exposed vs. unconditional. Neither column is referenced by the replication script, so the exact construction can't be confirmed from the included materials.]** |
+| `hard_news_bin_all` | Tertile of `hard_news_n` across the **full sample**. Not used by the replication script. |
 
 ---
 
@@ -233,8 +233,8 @@ All are `{0, 1}` indicator columns.
 | `college` | 1 if college graduate (i.e., `educ4 ∈ {College grad, Postgrad}`), else 0. |
 | `female` | 1 if `gender4 == "Female"`, else 0. |
 | `non_white` | 1 if `race4 != "White"`, else 0. |
-| `trump_support` | **Defined per the paper as: 1 if intending to vote for Trump in 2020 (pre-wave), 0 otherwise.** Not a vote-cast indicator — it's intent. |
-| `biden_support` | 1 if intending to vote for Biden in 2020, 0 otherwise. (Mirror of `trump_support`.) |
+| `trump_support` | 1 if Trump-supporter, 0 otherwise. The supplementary PDF caption defines this as "intending to vote for Trump in 2020 election = 1". In practice the replication script also uses `presvote20combined == "Donald Trump"` interchangeably with `trump_support == 1`, so the column likely reflects the combined pre-/post-wave vote indicator. |
+| `biden_support` | 1 if Biden-supporter, 0 otherwise. Mirror of `trump_support`; used interchangeably with `presvote20combined == "Joe Biden"` in the replication. |
 | `knowledge` | Count (0–4) of `tie_senate`, `filibuster`, `presidential_terms`, `electoral_college` answered correctly. The paper calls this "political knowledge". |
 | `interest` | 1–4 recoding of `newsint`: 1 = `Hardly at all`, 4 = `Most of the time`. The paper calls this "political interest". |
 
@@ -253,13 +253,31 @@ All are `{0, 1}` indicator columns.
 
 ---
 
-## Open questions / items to verify against the replication code
+## Variables actually used by the published replication
 
-The following are points where this documentation is inferring from data inspection or the supplementary PDF and would benefit from direct confirmation in the original `.R` / `.Rmd` / `.py` replication script:
+The bundled `replication_script.Rmd` (Dahlke, Stanford — the paper's first author) was checked end-to-end. **Only the following columns from `master_data_2020.csv` are referenced anywhere in the script:**
 
-- **`_ng` suffix**: what list or filter does it represent?
-- **`conf02`–`conf12`**: what institution does each index correspond to?
-- **`election_behaviors_1`–`_17`**: what behavior does each index correspond to?
-- **`tf_adv`**: the term `adv` is ambiguous (advertising? advanced search? adversarial content?).
-- **`hispanic_origin_1`–`_4`**: which Hispanic-origin category corresponds to each index?
-- **`hard_news_bin` vs `hard_news_bin_all`**: is the difference conditional-on-nonzero vs. unconditional, or some other distinction?
+- **Sample / weights**: `weight`, `caseid`
+- **Exposure outcomes**:
+  - `untrustworthy_n`, `untrustworthy_flag` (the paper's 1,796-site list — primary outcome)
+  - `grinberg_n`, `grinberg_flag` (Guess et al. 2020's 490-site list — robustness check; **the column name is misleading**)
+  - `hard_news_n`, `hard_news_flag` (Bakshy + NewsGuard, 5,471 sites — Reviewer 1 supplementary)
+  - `fact_check_n`, `fact_check_flag` (PolitiFact / WaPo / Factcheck.org / Snopes — Reviewer 2 supplementary)
+  - `untrustworthy_all_percentage_info_diet`, `percentage_of_total`
+- **Slant**: `mean_ideology`, `ideology_bin`
+- **Predictors** (all in the main probit/OLS models): `trump_support`, `biden_support`, `knowledge`, `interest`, `college`, `female`, `non_white`, `age4_under_30`, `age4_30_44`, `age4_45_64`, `age4_65`
+- **Display / cross-tabs only**: `presvote20combined`, `age4`, `gender4`
+
+That's ~26 of the 235 columns. **The remaining ~210 columns are not analyzed in the published paper** — they are carry-over fields from the YouGov survey instrument and Pulse data join. They may still be valuable for *new* analyses (e.g., a causal-inference project that uses survey-elicited fake-news perception as an outcome or moderator), but their definitions cannot be confirmed from the bundled materials.
+
+### Items that remain uncertain after reviewing the replication code
+
+The replication script makes no reference to any of these — so the data-only inferences in this document are the best available:
+
+- **`_ng` suffix** (`untrustworthy_ng_n`, `untrustworthy_ng_flag`, `percentage_of_total_ng`) — never referenced in `replication_script.Rmd`. Author would need to be asked directly.
+- **`conf02`–`conf12`** — institution labels not in the supplementary PDF or replication code.
+- **`election_behaviors_1`–`_17`** — behavior labels not in the supplementary PDF or replication code.
+- **`tf_adv`, `tf_pdf`, `tf_spy`, `tf_wiki`, `tf_cache`, `tf_phishing`** — exact item wording not provided.
+- **`hispanic_origin_1`–`_4`** — index-to-category mapping not provided.
+- **`hard_news_bin` vs `hard_news_bin_all`** — likely conditional vs unconditional tertile, but neither column is referenced by the script.
+- **`untrustworthy_conservative_n`, `untrustworthy_liberal_n`, `hard_news_conservative_n`, `hard_news_liberal_n`** — exist in the CSV but never used by the script. Slant classification probably from Bakshy et al. (2015) audience-ideology scores, but the cut-point (e.g., is "conservative" alignment > +0.5? > 0?) is not documented.

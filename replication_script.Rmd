@@ -1,0 +1,1580 @@
+---
+title: "NHB Submission Replication"
+author: Ross Dahlke
+affiliation: Stanford University
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output: pdf_document
+#always_allow_html: yes
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+options(scipen = 99999)
+library(tidyverse)
+```
+
+```{r}
+master_data_pulse <- read_csv("master_data_2020.csv")
+```
+
+
+# In-line calculations
+
+```{r}
+biden <- master_data_pulse %>% 
+  count(presvote20combined) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(presvote20combined == "Joe Biden")  
+
+biden_n <- biden %>% 
+  pull(n)
+
+biden_per <- biden %>% 
+  pull(per)
+```
+
+```{r}
+trump <- master_data_pulse %>% 
+  count(presvote20combined) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(presvote20combined == "Donald Trump")  
+
+trump_n <- trump %>% 
+  pull(n)
+
+trump_per <- trump %>% 
+  pull(per)
+```
+
+```{r}
+age_65 <- master_data_pulse %>% 
+  count(age4) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(age4 == "65+")
+
+age_65_n <- age_65 %>% 
+  pull(n)
+  
+age_65_per <- age_65 %>% 
+  pull(per)
+```
+
+```{r}
+age_45 <- master_data_pulse %>% 
+  count(age4) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(age4 == "45-64")
+
+age_45_n <- age_45 %>% 
+  pull(n)
+  
+age_45_per <- age_45 %>% 
+  pull(per)
+```
+
+```{r}
+age_30 <- master_data_pulse %>% 
+  count(age4) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(age4 == "30-44")
+
+age_30_n <- age_30 %>% 
+  pull(n)
+  
+age_30_per <- age_30 %>% 
+  pull(per)
+```
+
+```{r}
+age_18 <- master_data_pulse %>% 
+  count(age4) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(age4 == "Under 30")
+
+age_18_n <- age_18 %>% 
+  pull(n)
+  
+age_18_per <- age_18 %>% 
+  pull(per)
+```
+
+```{r}
+male <- master_data_pulse %>% 
+  count(gender4) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(gender4 == "Male")
+
+male_n <- male %>% 
+  pull(n)
+  
+male_per <- male %>% 
+  pull(per)
+```
+
+```{r}
+female <- master_data_pulse %>% 
+  count(gender4) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(gender4 == "Female")
+
+female_n <- female %>% 
+  pull(n)
+  
+female_per <- female %>% 
+  pull(per)
+```
+
+```{r}
+interest <- master_data_pulse %>% 
+  count(interest) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(interest >= 3) %>% 
+  summarize(n = sum(n),
+            per = sum(per))
+
+interest_n <- interest %>% 
+  pull(n)
+  
+interest_per <- interest %>% 
+  pull(per)
+```
+
+```{r}
+knowledge <- master_data_pulse %>% 
+  count(knowledge) %>% 
+  mutate(per = n / sum(n)) %>% 
+  filter(knowledge == 4) 
+
+knowledge_n <- knowledge %>% 
+  pull(n)
+  
+knowledge_per <- knowledge %>% 
+  pull(per)
+```
+ Of these participants, __`r biden_per`__% (n = __`r biden_n`__) supported Joe Biden in the 2020 election while __`r trump_per`__% (n = __`r trump_n`__) supported Donald Trump. __`r age_65_per`__ (n = __`r age_65_n`__) were aged 65+, __`r age_45_per`__% (n = __`r age_45_n`__) were 45-64, __`r age_30_per`__% (n = __`r age_30_n`__) were 30-44, and __`r age_18_n`__% (n = __`r age_18_per`__) were under 30. __`r male_per`__% (n = __`r male_n`__) reported identifying as male and __`r female_per`__% (n = __`r female_n`__) reported identifying as female. __`r interest_per`__ percent (n = __`r interest_n`__) said they follow politics most or some of the time and __`r knowledge_per``__% (n = __`r knowledge_n`__) were considered highly knowledgeable about politics according to Pew Research Center’s (2018) civic knowledge questionnaire. 
+
+
+```{r}
+exposed_per <- tibble(mean = diagis::weighted_mean(x = master_data_pulse %>% pull(untrustworthy_flag), 
+     w = master_data_pulse %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_pulse %>% pull(untrustworthy_flag), 
+     w = master_data_pulse %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+```{r}
+master_data_2016 <- haven::read_dta("master_data_2016.Dta") %>% 
+    filter(!is.na(totalfakebinary_grinberg)) %>% 
+    mutate(age = 2016 - birthyr,
+         ageunder30 = if_else(age < 30, 1, 0),
+         age4_30_44 = if_else(age >= 30 & age <= 44, 1, 0),
+         age4_45_64 = if_else(age >= 45 & age <= 64, 1, 0), 
+         age4_65 = if_else(age >= 65, 1, 0),
+         untrustworthy_flag = totalfakebinary_grinberg,
+         untrustworthy_n = totalfakecount_grinberg,
+         percentage_of_total = untrustworthy_n / totalvisits) %>% 
+  mutate(untrustworthy_flag = totalfakebinary_grinberg, 
+         trump_support = trumpsupport, 
+         interest = polinterest, 
+         non_white = nonwhite) %>% 
+  mutate(untrustworthy_all_percentage_info_diet = untrustworthy_n / totalnewscount_grinberg)
+```
+
+```{r}
+master_data_2016 %>% 
+  arrange(desc(untrustworthy_n)) %>% 
+  select(untrustworthy_n)
+```
+
+```{r}
+diff_exposure <- weights::wtd.t.test(x = master_data_pulse %>% pull(untrustworthy_flag),
+                    weight = master_data_pulse %>% pull(weight),
+                    y = master_data_2016 %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% pull(weight))
+```
+
+
+```{r}
+sd_1 <- Hmisc::wtd.var(x = master_data_pulse %>% pull(untrustworthy_flag),
+                       weights = master_data_pulse %>% pull(weight)) %>% 
+  sqrt()
+
+sd_2 <- Hmisc::wtd.var(x = master_data_2016 %>% pull(untrustworthy_flag),
+                       weights = master_data_2016 %>% pull(weight)) %>% 
+  sqrt()
+
+sd_pooled <- sqrt((sd_1^2 + sd_2^2) / 2)
+
+print("Cohen's d:")
+(diff_exposure$additional[["Mean.x"]] - diff_exposure$additional[["Mean.y"]]) / sd_pooled
+
+print("95% CI:")
+diff_exposure$additional[["Difference"]] - diff_exposure$additional[["Std. Err"]]
+diff_exposure$additional[["Difference"]] + diff_exposure$additional[["Std. Err"]]
+```
+
+During the 2016 election, Guess et al. (2020) found that 44.3% (95% CI = 40.8-47.7%) of Americans aged 18 or older were exposed to at least one untrustworthy website. By contrast, we find that during the 2020 election only __`r exposed_per %>% pull(mean)`__% (95% CI = __`r exposed_per %>% pull(low)`__- __`r exposed_per %>% pull(high)`__%) of Americans were exposed to at least one untrustworthy website. This decrease represents a significant reduction (t = __`r diff_exposure$coefficients[1] %>% as.numeric()`__, p < __`r diff_exposure$coefficients[3] %>% as.numeric()`__) in the percentage of Americans exposed to untrustworthy websites from 2016 to 2020.
+
+```{r}
+avg_2020 <- tibble(mean = diagis::weighted_mean(x = master_data_pulse %>% filter(untrustworthy_flag == 1) %>%  pull(untrustworthy_n), 
+     w = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(untrustworthy_n), 
+     w = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+```{r}
+avg_2016 <- tibble(mean = diagis::weighted_mean(x = master_data_2016 %>% filter(untrustworthy_flag == 1) %>%  pull(untrustworthy_n), 
+     w = master_data_2016 %>% filter(untrustworthy_flag == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_2016 %>% filter(untrustworthy_flag == 1) %>% pull(untrustworthy_n), 
+     w = master_data_2016 %>% filter(untrustworthy_flag == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+
+```{r}
+avg_diff <- weights::wtd.t.test(x = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(untrustworthy_n),
+                    weight = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(untrustworthy_flag == 1) %>% pull(untrustworthy_n),
+                    weighty = master_data_2016 %>% filter(untrustworthy_flag == 1) %>% pull(weight)) 
+```
+
+
+```{r}
+sd_1 <- Hmisc::wtd.var(x = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(untrustworthy_n),
+                       weights = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_2 <- Hmisc::wtd.var(x = master_data_2016 %>% filter(untrustworthy_flag == 1) %>% pull(untrustworthy_n),
+                       weights = master_data_2016 %>% filter(untrustworthy_flag == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_pooled <- sqrt((sd_1^2 + sd_2^2) / 2)
+
+print("Cohen's d:")
+(avg_diff$additional[["Mean.x"]] - avg_diff$additional[["Mean.y"]]) / sd_pooled
+
+print("95% CI:")
+avg_diff$additional[["Difference"]] - avg_diff$additional[["Std. Err"]]
+avg_diff$additional[["Difference"]] + avg_diff$additional[["Std. Err"]]
+```
+
+While a smaller percentage of Americans appeared to be exposed to any untrustworthy websites in 2020 compared to 2016, one possibility is that those who are exposed to untrustworthy websites in 2020 were exposed at greater rates than in 2016. However, our data suggest otherwise. First, the average number of untrustworthy website visits among those who visited at least one untrustworthy website in 2020 ( __`r avg_2020 %>% pull(mean)`__ visits; 95% CI = __`r avg_2020 %>% pull(low)`__- __`r avg_2020 %>% pull(high)`__) was significantly lower than the average number in 2016 ( __`r avg_2016 %>% pull(mean)`__ visits; 95% CI = __`r avg_2016 %>% pull(low)`__- __`r avg_2016 %>% pull(high)`__) (t = __`r avg_diff$coefficients[1]`__, p = __`r avg_diff$coefficients[3]`__).
+
+[Page duration calculations involve full web traffic histories which are not available in this repository in order to protect subject confidentiality]
+
+```{r}
+trump_expose <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(trump_support == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(trump_support == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96)
+```
+
+```{r}
+biden_expose <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(biden_support == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(biden_support == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96)
+```
+
+```{r}
+candidate_diff_trump <- weights::wtd.t.test(x = master_data_pulse %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+                    weight = master_data_pulse %>% filter(trump_support == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% filter(trump_support == 1) %>% pull(weight)) 
+```
+
+```{r}
+sd_1 <- Hmisc::wtd.var(x = master_data_pulse %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_pulse %>% filter(trump_support == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_2 <- Hmisc::wtd.var(x = master_data_2016 %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_2016 %>% filter(trump_support == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_pooled <- sqrt((sd_1^2 + sd_2^2) / 2)
+
+print("Cohen's d:")
+(candidate_diff_trump$additional[["Mean.x"]] - candidate_diff_trump$additional[["Mean.y"]]) / sd_pooled
+
+print("95% CI:")
+candidate_diff_trump$additional[["Difference"]] - candidate_diff_trump$additional[["Std. Err"]]
+candidate_diff_trump$additional[["Difference"]] + candidate_diff_trump$additional[["Std. Err"]]
+```
+
+
+```{r}
+candidate_diff_biden <- weights::wtd.t.test(x = master_data_pulse %>% filter(biden_support == 1) %>% pull(untrustworthy_flag),
+                    weight = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(weight)) 
+```
+
+```{r}
+sd_1 <- Hmisc::wtd.var(x = master_data_pulse %>% filter(biden_support == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_2 <- Hmisc::wtd.var(x = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_pooled <- sqrt((sd_1^2 + sd_2^2) / 2)
+
+print("Cohen's d:")
+(candidate_diff_biden$additional[["Mean.x"]] - candidate_diff_biden$additional[["Mean.y"]]) / sd_pooled
+
+print("95% CI:")
+candidate_diff_biden$additional[["Difference"]] - candidate_diff_biden$additional[["Std. Err"]]
+candidate_diff_biden$additional[["Difference"]] + candidate_diff_biden$additional[["Std. Err"]]
+```
+
+
+```{r}
+trump_biden <- weights::wtd.t.test(x = master_data_pulse %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+                    weight = master_data_pulse %>% filter(trump_support == 1) %>% pull(weight),
+                    y = master_data_pulse %>% filter(biden_support == 1) %>% pull(untrustworthy_flag),
+                    weighty = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight)) 
+
+sd_1 <- Hmisc::wtd.var(x = master_data_pulse %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_pulse %>% filter(trump_support == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_2 <- Hmisc::wtd.var(x = master_data_pulse %>% filter(biden_support == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_pooled <- sqrt((sd_1^2 + sd_2^2) / 2)
+
+print("Cohen's d:")
+(trump_biden$additional[["Mean.x"]] - trump_biden$additional[["Mean.y"]]) / sd_pooled
+
+print("95% CI:")
+trump_biden$additional[["Difference"]] - trump_biden$additional[["Std. Err"]]
+trump_biden$additional[["Difference"]] + trump_biden$additional[["Std. Err"]]
+```
+
+```{r}
+trump_clinton <- weights::wtd.t.test(x = master_data_2016 %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+                    weight = master_data_2016 %>% filter(trump_support == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(weight)) 
+
+sd_1 <- Hmisc::wtd.var(x = master_data_2016 %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_2016 %>% filter(trump_support == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_2 <- Hmisc::wtd.var(x = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_pooled <- sqrt((sd_1^2 + sd_2^2) / 2)
+
+print("Cohen's d:")
+(trump_clinton$additional[["Mean.x"]] - trump_clinton$additional[["Mean.y"]]) / sd_pooled
+
+print("95% CI:")
+trump_clinton$additional[["Difference"]] - trump_clinton$additional[["Std. Err"]]
+trump_clinton$additional[["Difference"]] + trump_clinton$additional[["Std. Err"]]
+```
+
+
+We find a similar difference between Donald Trump and Joe Biden supporters in 2020. __`r trump_expose %>% pull(mean)`__% (95% CI = __`r trump_expose %>% pull(low)`__- __`r trump_expose %>% pull(high)`__%) of Trump supporters visited at least one untrustworthy website while __`r biden_expose %>% pull(mean)`__% (95% CI = __`r biden_expose %>% pull(low)`__- __`r biden_expose %>% pull(high)`__) of Biden supporters visited at least one untrustworthy website. However, for both Trump and Clinton/Biden supporters, the percentages of supporters exposed in 2020 were significantly lower than the percentages of supporters exposed in 2016 (tTrump = __`r candidate_diff_trump$coefficients[1]`__, p < __`r candidate_diff_trump$coefficients[3]`__; tClinton/Biden = __`r candidate_diff_biden$coefficients[1]`__, p < __`r candidate_diff_biden$coefficients[3]`__).
+
+
+
+```{r}
+conservative_decile <- weights::wtd.t.test(x = master_data_pulse %>% filter(ideology_bin == 10) %>% pull(untrustworthy_flag),
+                    weight = master_data_pulse %>% filter(ideology_bin == 10) %>% pull(weight),
+                    y = master_data_2016 %>% filter(decile == 10) %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% filter(decile == 10) %>% pull(weight)) 
+
+sd_1 <- Hmisc::wtd.var(x = master_data_pulse %>% filter(ideology_bin == 10) %>% pull(untrustworthy_flag),
+                       weights = master_data_pulse %>% filter(ideology_bin == 10) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_2 <- Hmisc::wtd.var(x = master_data_2016 %>% filter(decile == 10) %>% pull(untrustworthy_flag),
+                       weights = master_data_2016 %>% filter(decile == 10) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_pooled <- sqrt((sd_1^2 + sd_2^2) / 2)
+
+print("Cohen's d:")
+(conservative_decile$additional[["Mean.x"]] - conservative_decile$additional[["Mean.y"]]) / sd_pooled
+
+print("95% CI:")
+conservative_decile$additional[["Difference"]] - conservative_decile$additional[["Std. Err"]]
+conservative_decile$additional[["Difference"]] + conservative_decile$additional[["Std. Err"]]
+```
+
+
+```{r}
+liberal_decile <- weights::wtd.t.test(x = master_data_pulse %>% filter(ideology_bin == 1) %>% pull(untrustworthy_flag),
+                    weight = master_data_pulse %>% filter(ideology_bin == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(decile == 1) %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% filter(decile == 1) %>% pull(weight)) 
+
+sd_1 <- Hmisc::wtd.var(x = master_data_pulse %>% filter(ideology_bin == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_pulse %>% filter(ideology_bin == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_2 <- Hmisc::wtd.var(x = master_data_2016 %>% filter(decile == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_2016 %>% filter(decile == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_pooled <- sqrt((sd_1^2 + sd_2^2) / 2)
+
+print("Cohen's d:")
+(liberal_decile$additional[["Mean.x"]] - liberal_decile$additional[["Mean.y"]]) / sd_pooled
+
+print("95% CI:")
+liberal_decile$additional[["Difference"]] - liberal_decile$additional[["Std. Err"]]
+liberal_decile$additional[["Difference"]] + liberal_decile$additional[["Std. Err"]]
+```
+
+```{r}
+master_data_2016 %>% 
+  group_by(decile) %>% 
+  summarise(mean = diagis::weighted_mean(untrustworthy_flag, weight),
+            se = diagis::weighted_se(untrustworthy_flag, weight)) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         election = "2016 Election") %>% 
+  rbind(master_data_pulse %>% 
+  group_by(ideology_bin) %>% 
+  summarise(mean = diagis::weighted_mean(untrustworthy_flag, weight),
+            se = diagis::weighted_se(untrustworthy_flag, weight)) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         election = "2020 Election") %>% 
+    rename(decile = ideology_bin)) %>% 
+  filter(!is.na(decile)) %>% 
+  ggplot(aes(x = decile, y = mean, ymin = low, ymax = high)) +
+  geom_pointrange() +
+  scale_y_continuous(breaks = seq(0, 1, .25), labels = scales::percent_format()) + 
+  scale_x_continuous(breaks = seq(1,10,1)) +
+  coord_cartesian(ylim = c(0,1)) + 
+  labs(x = "average media diet slant decile
+  (liberal to conservative)", 
+       y = "% of people who visited at least one untrustworthy site",
+       title = "Visits to untrustworthy websites by media diet slant decile") + 
+  facet_wrap(.~election, ncol = 2, scales = "free_x") +
+  theme_bw() +
+  theme(panel.grid.minor.x = element_blank())
+```
+
+```{r}
+age_prop_1 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "under 30",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_2 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 30 and 44",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_3 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 45 and 64",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_4 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_65 == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(age4_65 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_65 == 1) %>% pull(untrustworthy_flag),
+     w = master_data_pulse %>% filter(age4_65 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "over 65",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_1_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age < 30) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age < 30) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age < 30) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age < 30) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "under 30",
+         data = "2016 Election")
+```
+
+```{r}
+age_prop_2_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 30 and 44",
+         data = "2016 Election")
+```
+
+```{r}
+age_prop_3_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 45 and 64",
+         data = "2016 Election")
+```
+
+```{r}
+age_prop_4_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age >= 65) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 65) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age >= 65) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 65) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "over 65",
+         data = "2016 Election")
+```
+
+```{r}
+bind_rows(age_prop_1, age_prop_2, age_prop_3, age_prop_4, age_prop_1_guess, age_prop_2_guess, age_prop_3_guess, age_prop_4_guess) %>% 
+  mutate(age = factor(age, levels = c("under 30", "between 30 and 44", "between 45 and 64", "over 65"))) %>% 
+  ggplot(aes(x = age, ymin = low, y = mean, ymax = high, color = age))+
+  geom_pointrange()+
+  scale_color_grey()+
+  scale_y_continuous(labels = scales::percent_format(), breaks = seq(0, 1, .1), limits = c(0,1))+
+  scale_x_discrete(guide = guide_axis(angle = 30)) +
+  labs(title = "Proportion Exposed to Untrustworthy Websites by Age", 
+       x = "",
+       y = "Mean consuming untrustworthy websites (%)") +
+  theme_bw()+
+  theme(legend.position = "none", panel.grid.major.x = element_blank()) +
+  facet_wrap(.~data, ncol = 2)
+```
+
+Age also played an important role in exposure to untrustworthy websites during the 2016 election, with older individuals generally being more likely to visit untrustworthy sites. In 2016, those 65 and older were __`r age_prop_4_guess$mean / age_prop_1_guess$mean`__ times more likely to visit untrustworthy websites than adults under 30. During the 2020 election, it appears that the positive association between age and likelihood of exposure to untrustworthy websites persisted, with those 65+ being __`r age_prop_4$mean / age_prop_1$mean`__ times more likely to visit untrustworthy websites than those under 30. However, all age groups in 2020 were less likely to be exposed to untrustworthy websites than those same age groups in 2016 (see Figure 2). For instance, while __`r age_prop_4_guess %>% pull(mean)`__% (95% CI = __`r age_prop_4_guess %>% pull(low)`__- __`r age_prop_4_guess %>% pull(high)`__%) of people 65+ were exposed to untrustworthy websites in 2016, only __`r age_prop_4 %>% pull(mean)`__% (95% CI = __`r age_prop_4 %>% pull(low)`__- __`r age_prop_4 %>% pull(high)`__%) of people 65+ were exposed in 2020. 
+
+OLS Model
+
+```{r}
+lm_binary_2020 <- lm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_pulse, weights = weight) 
+```
+
+```{r}
+lm_binary_2016 <- master_data_2016 %>% 
+  lm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = ., weights = weight) 
+```
+
+```{r, results='asis'}
+stargazer::stargazer(lm_binary_2016, lm_binary_2020, header = FALSE, type = "latex", column.labels = c("2016", "2020"), dep.var.labels.include = F, dep.var.caption = "Exposure to at least one untrustworthy website (binary) ", model.numbers = F, covariate.labels = c("Trump supporter", "Political knowledge", "Political interest", "College", "Female", "Non-white", "Age 30-44 years", "Age 45-64 years", "Age 65+"), star.char = c("*", "**", "***"), star.cutoffs = c(0.05, 0.01, 0.001))
+```
+
+\newpage 
+
+Probit Model
+
+```{r}
+probit_binary_2020 <- glm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_pulse, weights = weight, family = binomial(link = "probit"))
+```
+
+```{r}
+probit_binary_2016 <- glm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_2016, weights = weight, family = binomial(link = "probit"))
+```
+
+```{r, results='asis'}
+stargazer::stargazer(probit_binary_2016, probit_binary_2020, header = FALSE, type = "latex", column.labels = c("2016", "2020"), dep.var.labels.include = F, dep.var.caption = "Exposure to at least one untrustworthy website (binary) ", model.numbers = F, covariate.labels = c("Trump supporter", "Political knowledge", "Political interest", "College", "Female", "Non-white", "Age 30-44 years", "Age 45-64 years", "Age 65+"), star.char = c("*", "**", "***"), star.cutoffs = c(0.05, 0.01, 0.001))
+```
+
+[Referral analyses involve full web traffic histories which are not available in this repository in order to protect subject confidentiality]
+
+# Reviewer comments
+
+# Reviewer 1
+
+## Comment 3
+
+Here are analyses with hard news as the dependent variable (instead of untrustworthy website exposure).
+
+Hard news exposure now includes NG websites (as recommended by another reviewer). 
+
+Overall, we see similar levels of news exposures in 2020 versus 2016. 
+
+
+```{r}
+exposed_per <- tibble(mean = diagis::weighted_mean(x = master_data_pulse %>% pull(hard_news_flag), 
+     w = master_data_pulse %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_pulse %>% pull(hard_news_flag), 
+     w = master_data_pulse %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+2020 Hard news exposure
+
+```{r}
+exposed_per
+```
+
+
+```{r}
+master_data_2016 <- haven::read_dta("master_data_2016.Dta") %>% 
+    filter(!is.na(totalfakebinary_grinberg)) %>% 
+    mutate(age = 2016 - birthyr,
+         ageunder30 = if_else(age < 30, 1, 0),
+         age4_30_44 = if_else(age >= 30 & age <= 44, 1, 0),
+         age4_45_64 = if_else(age >= 45 & age <= 64, 1, 0), 
+         age4_65 = if_else(age >= 65, 1, 0),
+         untrustworthy_flag = totalfakebinary_grinberg,
+         untrustworthy_n = totalfakecount_grinberg,
+         percentage_of_total = untrustworthy_n / totalvisits) %>% 
+  mutate(untrustworthy_flag = totalfakebinary_grinberg, 
+         hard_news_flag = totalnewsbinary_grinberg,
+         hard_news_n = totalnewscount_grinberg,
+         trump_support = trumpsupport, 
+         interest = polinterest, 
+         non_white = nonwhite) %>% 
+  mutate(untrustworthy_all_percentage_info_diet = untrustworthy_n / totalnewscount_grinberg)
+```
+
+```{r}
+diff_exposure <- weights::wtd.t.test(x = master_data_pulse %>% pull(hard_news_flag),
+                    weight = master_data_pulse %>% pull(weight),
+                    y = master_data_2016 %>% pull(hard_news_flag),
+                    weighty = master_data_2016 %>% pull(weight))
+
+diff_exposure_2016 <- weights::wtd.t.test(x = master_data_2016 %>% pull(hard_news_flag),
+                    weight = master_data_2016 %>% pull(weight))
+
+diff_exposure_2020 <- weights::wtd.t.test(x = master_data_pulse %>% pull(hard_news_flag),
+                    weight = master_data_pulse %>% pull(weight))
+```
+
+2020 versus 2016 exposure
+
+```{r}
+tibble("m1" = round(diff_exposure_2016$additional[1], 3),
+       "se1" = round(diff_exposure_2016$additional[4], 3),
+       "m2" = round(diff_exposure_2020$additional[1], 3),
+       "se2" = round(diff_exposure_2020$additional[4], 3),
+       "t-value" = round(diff_exposure$coefficients[1], 3),
+       "p-value" = round(diff_exposure$coefficients[3], 3)) %>% 
+    knitr::kable(format = "latex", 
+               booktabs = T,
+               col.names = kableExtra::linebreak(c("M", "SE", "M", "SE", "t-value", "p-value")),
+               row.names = F,
+               escape = F,
+               caption = "Percentage of Americans exposed to at least one hard news website") %>% 
+  kableExtra::add_header_above(c("2016" = 2, "2020" = 2, " " = 2))
+```
+
+```{r}
+avg_2020 <- tibble(mean = diagis::weighted_mean(x = master_data_pulse %>% filter(hard_news_flag == 1) %>%  pull(hard_news_n), 
+     w = master_data_pulse %>% filter(hard_news_flag == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_pulse %>% filter(hard_news_flag == 1) %>% pull(hard_news_n), 
+     w = master_data_pulse %>% filter(hard_news_flag == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+2020 of those exposed, average exposures
+
+```{r}
+avg_2020
+```
+
+
+```{r}
+avg_2016 <- tibble(mean = diagis::weighted_mean(x = master_data_2016 %>% filter(hard_news_flag == 1) %>%  pull(hard_news_n), 
+     w = master_data_2016 %>% filter(hard_news_flag == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_2016 %>% filter(hard_news_flag == 1) %>% pull(hard_news_n), 
+     w = master_data_2016 %>% filter(hard_news_flag == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+2016 of those exposed, average exposures
+
+```{r}
+avg_2016
+```
+
+2020 versus 2016 exposures of those exposed
+
+```{r}
+avg_diff <- weights::wtd.t.test(x = master_data_pulse %>% filter(hard_news_flag == 1) %>% pull(hard_news_n),
+                    weight = master_data_pulse %>% filter(hard_news_flag == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(hard_news_flag == 1) %>% pull(hard_news_n),
+                    weighty = master_data_2016 %>% filter(hard_news_flag == 1) %>% pull(weight)) 
+```
+
+```{r}
+tibble("m1" = round(avg_2016 %>% pull(mean), 1),
+       "se1" = round(avg_2016 %>% pull(se), 1),
+       "m2" = round(avg_2020 %>% pull(mean), 1),
+       "se2" = round(avg_2020 %>% pull(se), 1),
+       "t-value" = round(avg_diff$coefficients[1], 3),
+       "p-value" = round(avg_diff$coefficients[3], 3)) %>% 
+    knitr::kable(format = "latex", 
+               booktabs = T,
+               col.names = kableExtra::linebreak(c("M", "SE", "M", "SE", "t-value", "p-value")),
+               row.names = F,
+               escape = F,
+               caption = "Average number of exposures to hard news sites of those exposed") %>% 
+  kableExtra::add_header_above(c("2016" = 2, "2020" = 2, " " = 2))
+```
+
+[duration calculations use privacy-sensitive data]
+
+Hard news exposure by media decile.
+
+Something weird with 2016, but since it's not our data, not sure what we can do about it.
+
+```{r}
+master_data_2016 %>% 
+  group_by(decile) %>% 
+  summarise(mean = diagis::weighted_mean(hard_news_flag, weight),
+            se = diagis::weighted_se(hard_news_flag, weight)) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         election = "2016 Election") %>% 
+  rbind(master_data_pulse %>% 
+  group_by(ideology_bin) %>% 
+  summarise(mean = diagis::weighted_mean(hard_news_flag, weight),
+            se = diagis::weighted_se(hard_news_flag, weight)) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         election = "2020 Election") %>% 
+    rename(decile = ideology_bin)) %>% 
+  filter(!is.na(decile)) %>% 
+  ggplot(aes(x = decile, y = mean, ymin = low, ymax = high)) +
+  geom_pointrange() +
+  scale_y_continuous(breaks = seq(0, 1, .25), labels = scales::percent_format()) + 
+  scale_x_continuous(breaks = seq(1,10,1)) +
+  coord_cartesian(ylim = c(0,1)) + 
+  labs(x = "average media diet slant decile
+  (liberal to conservative)", 
+       y = "% of people who visited at least one hard news site",
+       title = "Visits to hard news websites by media diet slant decile") + 
+  facet_wrap(.~election, ncol = 2, scales = "free_x") +
+  theme_bw() +
+  theme(panel.grid.minor.x = element_blank())
+```
+
+```{r}
+age_prop_1 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(hard_news_flag),
+     w = master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(hard_news_flag),
+     w = master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "under 30",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_2 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(hard_news_flag),
+     w = master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(hard_news_flag),
+     w = master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 30 and 44",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_3 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(hard_news_flag),
+     w = master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(hard_news_flag),
+     w = master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 45 and 64",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_4 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_65 == 1) %>% pull(hard_news_flag),
+     w = master_data_pulse %>% filter(age4_65 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_65 == 1) %>% pull(hard_news_flag),
+     w = master_data_pulse %>% filter(age4_65 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "over 65",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_1_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age < 30) %>% pull(hard_news_flag),
+     w = master_data_2016 %>% filter(age < 30) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age < 30) %>% pull(hard_news_flag),
+     w = master_data_2016 %>% filter(age < 30) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "under 30",
+         data = "2016 Election")
+```
+
+```{r}
+age_prop_2_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(hard_news_flag),
+     w = master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(hard_news_flag),
+     w = master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 30 and 44",
+         data = "2016 Election")
+```
+
+```{r}
+age_prop_3_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(hard_news_flag),
+     w = master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(hard_news_flag),
+     w = master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 45 and 64",
+         data = "2016 Election")
+```
+
+```{r}
+age_prop_4_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age >= 65) %>% pull(hard_news_flag),
+     w = master_data_2016 %>% filter(age >= 65) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age >= 65) %>% pull(hard_news_flag),
+     w = master_data_2016 %>% filter(age >= 65) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "over 65",
+         data = "2016 Election")
+```
+
+Hard news exposure by age
+
+```{r}
+bind_rows(age_prop_1, age_prop_2, age_prop_3, age_prop_4, age_prop_1_guess, age_prop_2_guess, age_prop_3_guess, age_prop_4_guess) %>% 
+  mutate(age = factor(age, levels = c("under 30", "between 30 and 44", "between 45 and 64", "over 65"))) %>% 
+  ggplot(aes(x = age, ymin = low, y = mean, ymax = high, color = age))+
+  geom_pointrange()+
+  scale_color_grey()+
+  scale_y_continuous(labels = scales::percent_format(), breaks = seq(0, 1, .1), limits = c(0,1))+
+  scale_x_discrete(guide = guide_axis(angle = 30)) +
+  labs(title = "Proportion Exposed to Hard News Websites by Age", 
+       x = "",
+       y = "Percentage consuming hard news sites") +
+  theme_bw()+
+  theme(legend.position = "none", panel.grid.major.x = element_blank()) +
+  facet_wrap(.~data, ncol = 2)
+```
+
+OLS Model
+
+```{r}
+lm_binary_2020 <- lm(hard_news_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_pulse, weights = weight) 
+```
+
+```{r}
+lm_binary_2016 <- master_data_2016 %>% 
+  lm(hard_news_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = ., weights = weight) 
+```
+
+OLS regression of predictors of hard news exposure
+
+```{r, results='asis'}
+stargazer::stargazer(lm_binary_2016, lm_binary_2020, header = FALSE, type = "latex", column.labels = c("2016", "2020"), dep.var.labels.include = F, dep.var.caption = "Exposure to at least one hard news website (binary)", model.numbers = F, covariate.labels = c("Trump supporter", "Political knowledge", "Political interest", "College", "Female", "Non-white", "Age 30-44 years", "Age 45-64 years", "Age 65+"), star.char = c("", "", ""), star.cutoffs = c(0.05, 0.01, 0.001), report = ("vcstp"), ci = T)
+```
+
+\newpage 
+
+Probit Model
+
+```{r}
+probit_binary_2020 <- glm(hard_news_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_pulse, weights = weight, family = binomial(link = "probit"))
+```
+
+```{r}
+probit_binary_2016 <- glm(hard_news_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_2016, weights = weight, family = binomial(link = "probit"))
+```
+
+```{r, results='asis'}
+stargazer::stargazer(probit_binary_2016, probit_binary_2020, header = FALSE, type = "latex", column.labels = c("2016", "2020"), dep.var.labels.include = F, dep.var.caption = "Exposure to at least one hard news  (binary) ", model.numbers = F, covariate.labels = c("Trump supporter", "Political knowledge", "Political interest", "College", "Female", "Non-white", "Age 30-44 years", "Age 45-64 years", "Age 65+"), star.char = c("", "", ""), star.cutoffs = c(0.05, 0.01, 0.001), report = ("vcstp"), ci = T)
+```
+
+
+
+## Comment 5
+
+```{r}
+as.Date("2016-11-14") - as.Date("2016-10-7")
+
+as.Date("2017-11-21") - as.Date("2017-10-25")
+
+as.Date("2018-07-31") - as.Date("2018-06-11")
+
+as.Date("2018-11-06") - as.Date("2018-10-5")
+```
+
+```{r}
+guess_max <- as.Date("2016-11-14")
+guess_min <- as.Date("2016-10-07")
+election_2016 <- as.Date("2016-11-08")
+election_2020 <- as.Date("2020-11-03")
+
+guess_pre <- election_2016 - guess_min
+guess_post <- guess_max - election_2016
+
+min_date <- election_2020 - guess_pre
+max_date <- election_2020 + guess_post
+```
+
+
+```{r}
+tibble(date = c(as.Date("2016-11-14"), as.Date("2016-11-14"), as.Date("2017-11-21"), as.Date("2018-07-31"), as.Date("2018-11-06"), min_date),
+       est = c(.443, .27, .05, .1, .07, .262)) %>% 
+  ggplot(aes(date, est)) +
+  geom_point() + 
+  geom_line() +
+  scale_y_continuous(labels = scales::percent_format(1)) +
+  scale_x_date(labels = scales::date_format("%B%n%Y"), breaks = "6 months") +
+  coord_cartesian(ylim = c(0, .5)) +
+  labs(title = "Untrustworthy website visit rate over time (binary exposure)", x = "date", y = "% exposed") +
+  theme_classic()
+```
+
+```{r}
+tibble(date = c(as.Date("2016-11-14"), as.Date("2016-11-14"), as.Date("2017-11-21"), as.Date("2018-07-31"), as.Date("2018-11-06"), min_date),
+       est = c(.443, .2, .12, .13, .085, .262),
+       labels = c("Guess et al., (2020)", 
+                  "Guess et al., (2019)",
+                  "Guess et al., (2019)",
+                  "Guess et al., (2019)",
+                  "Guess et al., (2019)",
+                  "Present paper")) %>% 
+  ggplot(aes(date, est, label = labels)) +
+  geom_point() + 
+  geom_line() +
+  ggrepel::geom_text_repel() + 
+  scale_y_continuous(labels = scales::percent_format(1)) +
+  scale_x_date(labels = scales::date_format("%B%n%Y"), breaks = "6 months", limits = c(as.Date("2016-08-01"), "2021-02-01")) +
+  coord_cartesian(ylim = c(0, .5)) +
+  labs(title = "Untrustworthy website visit rate over time (binary exposure)", x = "date", y = "% exposed") +
+  theme_classic()
+```
+
+```{r}
+tibble(date = c(as.Date("2016-11-14"), as.Date("2016-11-14"), as.Date("2017-11-21"), as.Date("2018-07-31"), as.Date("2018-11-06"), min_date),
+       est = c(.443, .27, .05, .1, .07, .262),
+       labels = c("Guess et al., (2020)", 
+                  "Guess et al., (2019)",
+                  "Guess et al., (2019)",
+                  "Guess et al., (2019)",
+                  "Guess et al., (2019)",
+                  "Present paper")) %>% 
+  ggplot(aes(date, est, color = labels)) +
+  geom_line(color = "black") +
+  geom_point() + 
+  scale_color_grey() +
+  # ggrepel::geom_text_repel() + 
+  scale_y_continuous(labels = scales::percent_format(1)) +
+  scale_x_date(labels = scales::date_format("%B%n%Y"), breaks = "6 months") +
+  coord_cartesian(ylim = c(0, .5)) +
+  labs(title = "Untrustworthy website visit rate over time (binary exposure)", x = "", y = "% exposed") +
+  theme_classic() +
+  theme(legend.position = "bottom")
+```
+
+# Reviewer 2
+
+## Comment 3
+
+Mobile use analysis
+
+Numbers and percent of people with each type of device in our dataset. 
+
+[this data includes privacy-sensitive information]
+
+## Comment 4
+
+Referral analysis with number of referrals per person exposed.
+
+[Referral data includes privacy-sensitive information]
+
+## Comment 6
+
+## 5. The problem of fact-checking mismatch
+
+### 5.1 _" We found that one in four respondents (25.3%, 95% CI=22.5–28.2%) visited a fact-checking article from a national fact-checking website at least once during the study period."_
+
+```{r}
+tibble(mean = diagis::weighted_mean(x = master_data_pulse %>% pull(fact_check_flag), 
+     w = master_data_pulse %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_pulse %>% pull(fact_check_flag), 
+     w = master_data_pulse %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+### 5.2 _"Fewer than half of the 44.3% of Americans who visited an untrust- worthy website during the study period also saw any fact check from one of the dedicated fact-checking websites (18.6%, 95% CI = 16.1– 21.1%; Fig. 5)."_
+
+```{r}
+tibble(mean = diagis::weighted_mean(x = master_data_pulse %>% filter(untrustworthy_flag == 1) %>%  pull(fact_check_flag), 
+     w = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(fact_check_flag), 
+     w = master_data_pulse %>% filter(untrustworthy_flag == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+```{r}
+master_data_pulse %>% filter(untrustworthy_flag == 1) %>% count(untrustworthy_flag, fact_check_flag)
+```
+
+
+### Figure 5
+
+
+```{r}
+guess_5 <- expand.grid(fact_check_flag = c(0,1),
+            untrustworthy_flag = c(0,1)) %>% 
+cbind(n = c(490, 67, 257, 186)) %>% 
+  uncount(n) %>% 
+  mutate(data = "2016 Election")
+```
+
+```{r}
+master_data_pulse %>% 
+  group_by(untrustworthy_flag, fact_check_flag) %>% 
+  summarize(n = sum(weight)) %>% 
+  ungroup() %>% 
+  mutate(per = n / sum(n),
+         total_n = sum(n))
+```
+
+```{r}
+prop.test(153.3817, 1170.787) %>% 
+  broom::tidy()
+```
+
+```{r}
+prop.test(91.71157, 1170.787) %>% 
+  broom::tidy()
+```
+
+
+```{r}
+fig_5_labels <- tibble(untrustworthy_flag = c("0", "0", "1", "1", "0", "0", "1", "1", 1),
+       fact_check_flag = c(0.5, 0.05, .65, 0.2, 0.5, 0.05, 0.65, 0.15, .1),
+       label = c("68.6%", "5.3%", "18.3%", "7.8%", "49.0%", "6.7%", "25.7%", "18.6%", "(6.4%, 9.5%)"),
+       data = c("2020 Election", "2020 Election", "2020 Election", "2020 Election", "2016 Election", "2016 Election", "2016 Election", "2016 Election", "2020 Election"))
+```
+
+
+```{r}
+master_data_pulse %>% 
+  mutate(data = "2020 Election") %>% 
+select(fact_check_flag, untrustworthy_flag, data) %>% 
+rbind(guess_5) %>% 
+ggplot(aes(x = as.factor(untrustworthy_flag), fill = as.factor(fact_check_flag))) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("grey71", "grey40",
+                               "grey71", "grey40",
+                               "grey71", "grey40",
+                               "grey71", "grey40")) +
+  labs(title = "Visits to fact-checking and untrustworthy websites", 
+       x = "Fake news exposure (0 = no exposure, 1 = exposure)",
+       y = "Fact check exposure 
+       (dark grey = exposure, light grey = no exposure)",
+       caption = "Total 2020 % exposed to at least one fact-checking website = 13.1% (95% CI = 11.2, 15.2)") +
+  geom_text(data = fig_5_labels, 
+            aes(x = untrustworthy_flag, 
+                y = fact_check_flag,
+                label = label)) + 
+  facet_wrap(.~data, ncol = 2, scales = "free_x") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.y = element_blank(),
+        panel.grid = element_blank())
+```
+
+## Deciles
+
+```{r}
+master_data_2016 %>% 
+  group_by(decile) %>% 
+  summarise(mean = diagis::weighted_mean(untrustworthy_flag, weight),
+            se = diagis::weighted_se(untrustworthy_flag, weight),
+            min = min(untrustworthy_n),
+            max = max(untrustworthy_n)) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         election = "2016 Election") %>% 
+  rbind(master_data_pulse %>% 
+  group_by(ideology_bin) %>% 
+  summarise(mean = diagis::weighted_mean(untrustworthy_flag, weight),
+            se = diagis::weighted_se(untrustworthy_flag, weight),
+            min = min(untrustworthy_n),
+            max = max(untrustworthy_n)) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         election = "2020 Election") %>% 
+    rename(decile = ideology_bin)) %>% 
+  filter(!is.na(decile)) %>% 
+  select(-high, -low) %>% 
+  mutate(mean = round(mean, 2),
+         se = round(se, 2)) %>% 
+  pivot_wider(names_from = c(election),
+              values_from = c(mean, se, min, max)) %>% 
+  janitor::clean_names() %>% 
+  select(decile, mean_2016_election, se_2016_election, min_2016_election, max_2016_election, mean_2020_election, se_2020_election, min_2020_election, max_2020_election) %>% 
+     knitr::kable(format = "latex", 
+               booktabs = T,
+               col.names = kableExtra::linebreak(c("decile", "M", "SE", "min", "max", "M", "SE", "min", "max")),
+               row.names = F,
+               escape = F,
+               caption = "Media Decile Graph Data") %>% 
+  kableExtra::add_header_above(c(" " = 1, "2016" = 4, "2020" = 4))
+```
+
+
+# Reviewer 3
+
+## Comment 8
+
+Analyses using _only_ Guess's list (ie Grinberg)
+
+```{r}
+exposed_per <- tibble(mean = diagis::weighted_mean(x = master_data_pulse %>% pull(grinberg_flag), 
+     w = master_data_pulse %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_pulse %>% pull(grinberg_flag), 
+     w = master_data_pulse %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+```{r}
+exposed_per
+```
+
+
+```{r}
+diff_exposure <- weights::wtd.t.test(x = master_data_pulse %>% pull(grinberg_flag),
+                    weight = master_data_pulse %>% pull(weight),
+                    y = master_data_2016 %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% pull(weight))
+```
+
+```{r}
+diff_exposure
+```
+
+```{r}
+avg_2020 <- tibble(mean = diagis::weighted_mean(x = master_data_pulse %>% filter(grinberg_flag == 1) %>%  pull(grinberg_n), 
+     w = master_data_pulse %>% filter(grinberg_flag == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x = master_data_pulse %>% filter(grinberg_flag == 1) %>% pull(grinberg_n), 
+     w = master_data_pulse %>% filter(grinberg_flag == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96) 
+```
+
+```{r}
+avg_2020
+```
+
+
+```{r}
+avg_diff <- weights::wtd.t.test(x = master_data_pulse %>% filter(grinberg_flag == 1) %>% pull(grinberg_n),
+                    weight = master_data_pulse %>% filter(grinberg_flag == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(untrustworthy_flag == 1) %>% pull(untrustworthy_n),
+                    weighty = master_data_2016 %>% filter(untrustworthy_flag == 1) %>% pull(weight)) 
+```
+
+```{r}
+avg_diff
+```
+
+
+While a smaller percentage of Americans appeared to be exposed to any untrustworthy websites in 2020 compared to 2016, one possibility is that those who are exposed to untrustworthy websites in 2020 were exposed at greater rates than in 2016. However, our data suggest otherwise. First, the average number of untrustworthy website visits among those who visited at least one untrustworthy website in 2020 ( __`r avg_2020 %>% pull(mean)`__ visits; 95% CI = __`r avg_2020 %>% pull(low)`__- __`r avg_2020 %>% pull(high)`__) was significantly lower than the average number in 2016 ( __`r avg_2016 %>% pull(mean)`__ visits; 95% CI = __`r avg_2016 %>% pull(low)`__- __`r avg_2016 %>% pull(high)`__) (t = __`r avg_diff$coefficients[1]`__, p = __`r avg_diff$coefficients[3]`__).
+
+[duration calculations use privacy-sensitive information]
+
+
+```{r}
+trump_expose <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(trump_support == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(trump_support == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(trump_support == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(trump_support == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96)
+```
+
+```{r}
+biden_expose <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(biden_support == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(biden_support == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96)
+```
+
+```{r}
+candidate_diff_trump <- weights::wtd.t.test(x = master_data_pulse %>% filter(trump_support == 1) %>% pull(grinberg_flag),
+                    weight = master_data_pulse %>% filter(trump_support == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(trump_support == 1) %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% filter(trump_support == 1) %>% pull(weight)) 
+```
+
+
+```{r}
+candidate_diff_biden <- weights::wtd.t.test(x = master_data_pulse %>% filter(biden_support == 1) %>% pull(untrustworthy_flag),
+                    weight = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(weight)) 
+```
+
+```{r}
+sd_1 <- Hmisc::wtd.var(x = master_data_pulse %>% filter(biden_support == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_pulse %>% filter(biden_support == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_2 <- Hmisc::wtd.var(x = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(untrustworthy_flag),
+                       weights = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(weight)) %>% 
+  sqrt()
+
+sd_pooled <- sqrt((sd_1^2 + sd_2^2) / 2)
+
+print("Cohen's d:")
+(candidate_diff_biden$additional[["Mean.x"]] - candidate_diff_biden$additional[["Mean.y"]]) / sd_pooled
+
+print("95% CI:")
+candidate_diff_biden$additional[["Difference"]] - candidate_diff_biden$additional[["Std. Err"]]
+candidate_diff_biden$additional[["Difference"]] + candidate_diff_biden$additional[["Std. Err"]]
+```
+
+This pattern stays the same.
+
+```{r}
+master_data_2016 %>% 
+  group_by(decile) %>% 
+  summarise(mean = diagis::weighted_mean(untrustworthy_flag, weight),
+            se = diagis::weighted_se(untrustworthy_flag, weight)) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         election = "2016 Election") %>% 
+  rbind(master_data_pulse %>% 
+  group_by(ideology_bin) %>% 
+  summarise(mean = diagis::weighted_mean(grinberg_flag, weight),
+            se = diagis::weighted_se(grinberg_flag, weight)) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         election = "2020 Election") %>% 
+    rename(decile = ideology_bin)) %>% 
+  filter(!is.na(decile)) %>% 
+  ggplot(aes(x = decile, y = mean, ymin = low, ymax = high)) +
+  geom_pointrange() +
+  scale_y_continuous(breaks = seq(0, 1, .25), labels = scales::percent_format()) + 
+  scale_x_continuous(breaks = seq(1,10,1)) +
+  coord_cartesian(ylim = c(0,1)) + 
+  labs(x = "average media diet slant decile
+  (liberal to conservative)", 
+       y = "% of people who visited at least one untrustworthy site",
+       title = "Visits to untrustworthy websites by media diet slant decile") + 
+  facet_wrap(.~election, ncol = 2, scales = "free_x") +
+  theme_bw() +
+  theme(panel.grid.minor.x = element_blank())
+```
+
+```{r}
+age_prop_1 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(age4_under_30 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "under 30",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_2 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(age4_30_44 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 30 and 44",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_3 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(age4_45_64 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 45 and 64",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_4 <- tibble(mean = diagis::weighted_mean(x =  master_data_pulse %>% filter(age4_65 == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(age4_65 == 1) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_pulse %>% filter(age4_65 == 1) %>% pull(grinberg_flag),
+     w = master_data_pulse %>% filter(age4_65 == 1) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "over 65",
+         data = "2020 Election")
+```
+
+```{r}
+age_prop_1_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age < 30) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age < 30) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age < 30) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age < 30) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "under 30",
+         data = "2016 Election")
+```
+
+```{r}
+age_prop_2_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 30 & age <= 44) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 30 and 44",
+         data = "2016 Election")
+```
+
+```{r}
+age_prop_3_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 45 & age <= 64) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "between 45 and 64",
+         data = "2016 Election")
+```
+
+```{r}
+age_prop_4_guess <- tibble(mean = diagis::weighted_mean(x =  master_data_2016 %>% filter(age >= 65) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 65) %>% pull(weight)), 
+     se = diagis::weighted_se(x =  master_data_2016 %>% filter(age >= 65) %>% pull(untrustworthy_flag),
+     w = master_data_2016 %>% filter(age >= 65) %>% pull(weight))) %>% 
+  mutate(low = mean - se * 1.96,
+         high = mean + se * 1.96,
+         age = "over 65",
+         data = "2016 Election")
+```
+
+```{r}
+bind_rows(age_prop_1, age_prop_2, age_prop_3, age_prop_4, age_prop_1_guess, age_prop_2_guess, age_prop_3_guess, age_prop_4_guess) %>% 
+  mutate(age = factor(age, levels = c("under 30", "between 30 and 44", "between 45 and 64", "over 65"))) %>% 
+  ggplot(aes(x = age, ymin = low, y = mean, ymax = high, color = age))+
+  geom_pointrange()+
+  scale_color_grey()+
+  scale_y_continuous(labels = scales::percent_format(), breaks = seq(0, 1, .1), limits = c(0,1))+
+  scale_x_discrete(guide = guide_axis(angle = 30)) +
+  labs(title = "Proportion Exposed to Untrustworthy Websites by Age", 
+       x = "",
+       y = "Mean consuming untrustworthy websites (%)") +
+  theme_bw()+
+  theme(legend.position = "none", panel.grid.major.x = element_blank()) +
+  facet_wrap(.~data, ncol = 2)
+```
+
+Age also played an important role in exposure to untrustworthy websites during the 2016 election, with older individuals generally being more likely to visit untrustworthy sites. In 2016, those 65 and older were __`r age_prop_4_guess$mean / age_prop_1_guess$mean`__ times more likely to visit untrustworthy websites than adults under 30. During the 2020 election, it appears that the positive association between age and likelihood of exposure to untrustworthy websites persisted, with those 65+ being __`r age_prop_4$mean / age_prop_1$mean`__ times more likely to visit untrustworthy websites than those under 30. However, all age groups in 2020 were less likely to be exposed to untrustworthy websites than those same age groups in 2016 (see Figure 2). For instance, while __`r age_prop_4_guess %>% pull(mean)`__% (95% CI = __`r age_prop_4_guess %>% pull(low)`__- __`r age_prop_4_guess %>% pull(high)`__%) of people 65+ were exposed to untrustworthy websites in 2016, only __`r age_prop_4 %>% pull(mean)`__% (95% CI = __`r age_prop_4 %>% pull(low)`__- __`r age_prop_4 %>% pull(high)`__%) of people 65+ were exposed in 2020. 
+
+OLS Model
+
+```{r}
+lm_binary_2020 <- lm(grinberg_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_pulse, weights = weight) 
+```
+
+```{r}
+lm_binary_2016 <- master_data_2016 %>% 
+  lm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = ., weights = weight) 
+```
+
+```{r, results='asis'}
+stargazer::stargazer(lm_binary_2016, lm_binary_2020, header = FALSE, type = "latex", column.labels = c("2016", "2020"), dep.var.labels.include = F, dep.var.caption = "Exposure to at least one untrustworthy website (binary) ", model.numbers = F, covariate.labels = c("Trump supporter", "Political knowledge", "Political interest", "College", "Female", "Non-white", "Age 30-44 years", "Age 45-64 years", "Age 65+"), star.char = c("", "", ""), star.cutoffs = c(0.05, 0.01, 0.001), report = ("vcstp"), ci = T)
+```
+
+\newpage 
+
+Probit Model
+
+```{r}
+probit_binary_2020 <- glm(grinberg_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_pulse, weights = weight, family = binomial(link = "probit"))
+```
+
+```{r}
+probit_binary_2016 <- glm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_2016, weights = weight, family = binomial(link = "probit"))
+```
+
+```{r, results='asis'}
+stargazer::stargazer(probit_binary_2016, probit_binary_2020, header = FALSE, type = "latex", column.labels = c("2016", "2020"), dep.var.labels.include = F, dep.var.caption = "Exposure to at least one untrustworthy website (binary) ", model.numbers = F, covariate.labels = c("Trump supporter", "Political knowledge", "Political interest", "College", "Female", "Non-white", "Age 30-44 years", "Age 45-64 years", "Age 65+"), star.char = c("", "", ""), star.cutoffs = c(0.05, 0.01, 0.001), report = ("vcstp"), ci = T)
+```
+
+
+
+```{r}
+master_data_pulse %>% 
+  ggplot(aes(untrustworthy_n)) +
+  geom_histogram() +
+  scale_x_log10() +
+  theme_bw()
+```
+
+```{r}
+master_data_pulse %>% 
+  ggplot(aes(untrustworthy_n)) +
+  geom_density(fill = "grey") +
+  scale_x_log10() +
+  theme_bw()
+```
+
+
+```{r}
+master_data_pulse %>% 
+  ggplot(aes(untrustworthy_n)) +
+  geom_histogram() +
+  theme_bw() +
+  labs(x = "# of misinformation websites exposures",
+       y = "count of individuals",
+       caption = "Moore et al., (2022)")
+```
+
+```{r}
+master_data_pulse %>% 
+  ggplot(aes(untrustworthy_n)) +
+  geom_density(fill = "grey") +
+  theme_bw() +
+  labs(x = "individuals exposed",
+       y = "density exposed")
+```
+
+# Author Checklist
+
+## Main text
+
+**All statements or interpretations of your results must be supported by appropriate, fully reported statistics. For example, the statements “the 197 percentage of people exposed to untrustworthy websites in more liberal media diets in 2020 198 was considerably lower than in those diets in 2016” (line 197) and “Among the most conservative media diets, the percentage of those exposed to untrustworthy sites was similar across both years” (line 198) should be supported by a formal test of the differences. (Please also revise the second statement to avoid interpreting a null result as evidence of no difference.**
+
+```{r}
+master_data_pulse <- read_csv("master_data_2020.csv")
+```
+
+```{r}
+master_data_2016 <- haven::read_dta("master_data_2016.dta") %>% 
+    filter(!is.na(totalfakebinary_grinberg)) %>% 
+    mutate(age = 2016 - birthyr,
+         ageunder30 = if_else(age < 30, 1, 0),
+         age4_30_44 = if_else(age >= 30 & age <= 44, 1, 0),
+         age4_45_64 = if_else(age >= 45 & age <= 64, 1, 0), 
+         age4_65 = if_else(age >= 65, 1, 0),
+         untrustworthy_flag = totalfakebinary_grinberg,
+         untrustworthy_n = totalfakecount_grinberg,
+         percentage_of_total = untrustworthy_n / totalvisits) %>% 
+  mutate(untrustworthy_flag = totalfakebinary_grinberg, 
+         trump_support = trumpsupport, 
+         interest = polinterest, 
+         non_white = nonwhite) %>% 
+  mutate(untrustworthy_all_percentage_info_diet = untrustworthy_n / totalnewscount_grinberg)
+```
+
+Most liberal decile 2020 vs. 2016
+
+```{r}
+weights::wtd.t.test(x = master_data_pulse %>% filter(ideology_bin == 1) %>%  pull(untrustworthy_flag),
+                    weight = master_data_pulse %>% filter(ideology_bin == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(decile == 1) %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% filter(decile == 1) %>% pull(weight))
+```
+
+Most conservative decile 2020 vs. 2016
+
+```{r}
+weights::wtd.t.test(x = master_data_pulse %>% filter(ideology_bin == 10) %>%  pull(untrustworthy_flag),
+                    weight = master_data_pulse %>% filter(ideology_bin == 10) %>% pull(weight),
+                    y = master_data_2016 %>% filter(decile == 10) %>% pull(untrustworthy_flag),
+                    weighty = master_data_2016 %>% filter(decile == 10) %>% pull(weight))
+```
+
+**In the section beginning in line 167, please indicate whether the differences in visits for Trump & Clinton supporters and for Trump & Biden supporters are statistically significant.**
+
+2020 Trump vs. Biden
+
+```{r}
+weights::wtd.t.test(x = master_data_pulse %>% filter(presvote20combined == "Donald Trump") %>%  pull(untrustworthy_n),
+                    weight = master_data_pulse %>% filter(presvote20combined == "Donald Trump") %>% pull(weight),
+                    y = master_data_pulse %>% filter(presvote20combined == "Joe Biden") %>% pull(untrustworthy_n),
+                    weighty = master_data_pulse %>% filter(presvote20combined == "Joe Biden") %>% pull(weight))
+```
+
+2016 Trump vs. Clinton
+
+```{r}
+weights::wtd.t.test(x = master_data_2016 %>% filter(trumpsupport == 1) %>%  pull(untrustworthy_n),
+                    weight = master_data_2016 %>% filter(trumpsupport == 1) %>% pull(weight),
+                    y = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(untrustworthy_n),
+                    weighty = master_data_2016 %>% filter(clintonsupport == 1) %>% pull(weight))
+```
+
+```{r}
+lm_binary_2020 <- lm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_pulse, weights = weight) 
+```
+
+```{r}
+lm_binary_2016 <- master_data_2016 %>% 
+  lm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = ., weights = weight) 
+```
+
+```{r, results='asis'}
+stargazer::stargazer(lm_binary_2016, lm_binary_2020, header = FALSE, type = "latex", column.labels = c("2016", "2020"), dep.var.labels.include = F, dep.var.caption = "Exposure to at least one untrustworthy website (binary) ", model.numbers = F, covariate.labels = c("Trump supporter", "Political knowledge", "Political interest", "College", "Female", "Non-white", "Age 30-44 years", "Age 45-64 years", "Age 65+"), star.char = c("", "", ""), star.cutoffs = c(0.05, 0.01, 0.001), report = ("vcstp"), ci = T)
+```
+
+```{r}
+lm_binary_2020 <- lm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = master_data_pulse, weights = weight) 
+```
+
+```{r}
+lm_binary_2016 <- master_data_2016 %>% 
+  lm(untrustworthy_flag ~ trump_support + knowledge + interest + college + female + non_white + age4_30_44 + age4_45_64 + age4_65, data = ., weights = weight) 
+```
+
+Full regression table
+
+```{r, results='asis'}
+stargazer::stargazer(lm_binary_2016, lm_binary_2020, header = FALSE, type = "latex", column.labels = c("2016", "2020"), dep.var.labels.include = F, dep.var.caption = "Exposure to at least one untrustworthy website (binary) ", model.numbers = F, covariate.labels = c("Trump supporter", "Political knowledge", "Political interest", "College", "Female", "Non-white", "Age 30-44 years", "Age 45-64 years", "Age 65+"), star.char = c("", "", ""), star.cutoffs = c(0.05, 0.01, 0.001), report = ("vcstp"), ci = T)
+```
