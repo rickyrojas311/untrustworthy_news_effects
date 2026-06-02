@@ -1,0 +1,389 @@
+---
+title: "Stats 361 Mediation Analysis"
+author: "Ricky Rojas"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(CMAverse)
+library(medflex)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(psych)
+library(DOS2)
+library(optmatch)
+library(RItools)
+library(fastDummies)
+```
+
+```{r cleaning-pipeline}
+# MASS (loaded by medflex) masks dplyr::select — use dplyr::select explicitly throughout
+# ==========================================
+# 1. LOAD & INITIAL FILTER
+# ==========================================
+df <- read.csv("master_data_2020.csv") %>%
+  filter(!is.na(presvote20post))
+
+treatment <- "untrustworthy_flag"
+mediator  <- "encountered_fakenews1_post"
+
+# ==========================================
+# 2. OUTCOME VARIABLES
+# ==========================================
+df <- df %>%
+  mutate(
+    voted_biden_2020    = as.integer(trimws(as.character(presvote20post)) == "Joe Biden"),
+    voted_trump_2020    = as.integer(trimws(as.character(presvote20post)) == "Donald Trump"),
+    turnout_2020_binary = as.integer(
+      !grepl("did not vote|skipped|__na__", trimws(as.character(presvote20post)), ignore.case = TRUE)
+    )
+  )
+
+# ==========================================
+# 3. FEATURE ENGINEERING
+# ==========================================
+
+# Digital Literacy Index — parse first numeric token from each tf column
+tf_cols <- c("tf_adv", "tf_pdf", "tf_spy", "tf_wiki", "tf_cache", "tf_phishing")
+
+parse_tf <- function(x) {
+  first_word <- sub("\\s.*", "", trimws(as.character(x)))
+  suppressWarnings(as.numeric(ifelse(grepl("^\\d+$", first_word), first_word, NA_real_)))
+}
+
+df$digital_literacy_index <- rowMeans(sapply(df[tf_cols], parse_tf), na.rm = TRUE)
+
+# Ideology & Party ID
+df <- df %>%
+  mutate(
+    ideo5_linear = case_when(
+      ideo5 == "Very liberal"      ~ 1L,
+      ideo5 == "Liberal"           ~ 2L,
+      ideo5 == "Moderate"          ~ 3L,
+      ideo5 == "Conservative"      ~ 4L,
+      ideo5 == "Very conservative" ~ 5L
+    ),
+    pid7_linear = case_when(
+      pid7 == "Strong Democrat"            ~ 1L,
+      pid7 == "Not very strong Democrat"   ~ 2L,
+      pid7 == "Lean Democrat"              ~ 3L,
+      pid7 == "Independent"               ~ 4L,
+      pid7 == "Lean Republican"           ~ 5L,
+      pid7 == "Not very strong Republican" ~ 6L,
+      pid7 == "Strong Republican"          ~ 7L
+    )
+  )
+
+# Social Media Use (en-dash separators preserved from survey labels)
+df <- df %>%
+  mutate(
+    socmed_use_linear = case_when(
+      trimws(as.character(socmed_use)) == "Less than 10 minutes per day" ~ 1L,
+      trimws(as.character(socmed_use)) == "10–30 minutes per day"   ~ 2L,
+      trimws(as.character(socmed_use)) == "31–60 minutes per day"   ~ 3L,
+      trimws(as.character(socmed_use)) == "1–2 hours per day"       ~ 4L,
+      trimws(as.character(socmed_use)) == "2–3 hours per day"       ~ 5L,
+      trimws(as.character(socmed_use)) == "More than 3 hours per day"    ~ 6L
+    )
+  )
+
+# News Interest
+df <- df %>%
+  mutate(
+    newsint_linear = case_when(
+      trimws(as.character(newsint)) == "Hardly at all"     ~ 1L,
+      trimws(as.character(newsint)) == "Only now and then" ~ 2L,
+      trimws(as.character(newsint)) == "Some of the time"  ~ 3L,
+      trimws(as.character(newsint)) == "Most of the time"  ~ 4L
+    )
+  )
+
+# Internet Use Frequency (unmapped values fall back to 3, matching Python fillna(3))
+df <- df %>%
+  mutate(
+    intuse_linear = case_when(
+      trimws(as.character(intuse)) == "Less often"          ~ 1L,
+      trimws(as.character(intuse)) == "A few times a week"  ~ 2L,
+      trimws(as.character(intuse)) == "About once a day"    ~ 3L,
+      trimws(as.character(intuse)) == "Several times a day" ~ 4L,
+      TRUE                                                  ~ 3L
+    )
+  )
+
+# 2016 Vote Condensed
+df <- df %>%
+  mutate(
+    presvote16post_condensed = case_when(
+      trimws(as.character(presvote16post)) == "Hillary Clinton" ~ "Hillary Clinton",
+      trimws(as.character(presvote16post)) == "Donald Trump"    ~ "Donald Trump",
+      is.na(presvote16post) |
+        trimws(as.character(presvote16post)) %in%
+          c("__NA__", "nan", "Did not vote", "Did not vote for President") ~ "Did Not Vote",
+      TRUE ~ "Other"
+    )
+  )
+
+# ==========================================
+# 4. COMPLETE-CASE SELECTION
+# ==========================================
+core_cols             <- c(treatment, mediator,
+                           "turnout_2020_binary", "voted_biden_2020", "voted_trump_2020",
+                           "age", "female")
+engineered_continuous <- "digital_literacy_index"
+linear_features       <- c("ideo5_linear", "pid7_linear", "socmed_use_linear",
+                            "newsint_linear", "intuse_linear")
+categorical_covariates <- c("race4", "educ4", "region", "presvote16post_condensed")
+
+all_cols <- c(core_cols, engineered_continuous, linear_features, categorical_covariates)
+
+df_clean <- df %>%
+  dplyr::select(all_of(all_cols)) %>%
+  drop_na()
+
+# ==========================================
+# 5. DESIGN MATRIX WITH DUMMIES (BASELINES DROPPED)
+# ==========================================
+X_matrix <- df_clean %>%
+  dplyr::select(age, female,
+                all_of(engineered_continuous),
+                all_of(linear_features),
+                all_of(categorical_covariates)) %>%
+  dummy_cols(
+    select_columns          = categorical_covariates,
+    remove_selected_columns = TRUE
+  ) %>%
+  dplyr::select(-any_of(c(
+    "presvote16post_condensed_Donald Trump",
+    "race4_White",
+    "educ4_College grad",
+    "region_Midwest"
+  )))
+
+# ==========================================
+# 6. FINAL EXTRACTIONS
+# ==========================================
+W         <- as.integer(df_clean[[treatment]])
+M         <- df_clean[[mediator]]
+Y_turnout <- as.integer(df_clean[["turnout_2020_binary"]])
+Y_biden   <- as.integer(df_clean[["voted_biden_2020"]])
+Y_trump   <- as.integer(df_clean[["voted_trump_2020"]])
+
+cat("--- PIPELINE VERIFICATION ---\n")
+cat(sprintf("Total valid sample size (N): %d\n",          nrow(df_clean)))
+cat(sprintf("Total covariates in X_matrix: %d\n",         ncol(X_matrix)))
+cat(sprintf("Mean 2020 Turnout rate: %.2f%%\n",           mean(Y_turnout) * 100))
+cat(sprintf("Mean unconditional Biden support: %.2f%%\n", mean(Y_biden)   * 100))
+cat(sprintf("Mean unconditional Trump support: %.2f%%\n", mean(Y_trump)   * 100))
+```
+
+---
+
+### Mediation Analysis
+
+**Causal structure:**
+`untrustworthy_flag` → `encountered_fakenews1_post` → `voted_biden_2020` / `voted_trump_2020`
+
+Both direct (NDE) and mediated (NIE) pathways are estimated using a regression-based natural effects model (`CMAverse::cmest`, `model = "rb"`) with bootstrap inference.
+
+```{r mediation-prep}
+# Inspect raw mediator values before any coercion
+cat("Raw mediator distribution (encountered_fakenews1_post):\n")
+print(table(df_clean$encountered_fakenews1_post, useNA = "always"))
+
+# Factor-encode categoricals; coerce mediator to numeric
+# If the mediator is text (e.g. "Yes"/"No"), recode it below before as.numeric()
+df_med <- df_clean %>%
+  mutate(
+    race4                      = as.factor(race4),
+    educ4                      = as.factor(educ4),
+    region                     = as.factor(region),
+    presvote16post_condensed   = as.factor(presvote16post_condensed),
+    untrustworthy_flag         = as.integer(untrustworthy_flag),
+    encountered_fakenews1_post = case_when(
+      encountered_fakenews1_post == "I have not encountered any fake news" ~ 0L,
+      encountered_fakenews1_post == "Not very much"                        ~ 1L,
+      encountered_fakenews1_post == "A fair amount"                        ~ 2L,
+      encountered_fakenews1_post == "A great deal"                         ~ 3L,
+      encountered_fakenews1_post == "Nearly all news I see is fake"        ~ 4L
+    )
+  ) %>%
+  drop_na()  # drop any rows with unrecognised mediator labels
+
+basec_vars <- c(
+  "age", "female", "digital_literacy_index",
+  "ideo5_linear", "pid7_linear", "socmed_use_linear",
+  "newsint_linear", "intuse_linear",
+  "race4", "educ4", "region", "presvote16post_condensed"
+)
+
+cat(sprintf("\nRows after coercion drop: %d  (removed %d)\n",
+            nrow(df_med), nrow(df_clean) - nrow(df_med)))
+cat(sprintf("Mediator mean: %.3f  |  SD: %.3f\n",
+            mean(df_med$encountered_fakenews1_post),
+            sd(df_med$encountered_fakenews1_post)))
+```
+
+```{r run-mediation, cache=TRUE}
+# Reduce nboot to 200 for faster iteration; raise to 1000 for final results
+NBOOT <- 1000
+
+cat("Running mediation for Biden vote...\n")
+res_biden <- cmest(
+  data       = df_med,
+  model      = "rb",
+  outcome    = "voted_biden_2020",
+  exposure   = "untrustworthy_flag",
+  mediator   = "encountered_fakenews1_post",
+  basec      = basec_vars,
+  EMint      = TRUE,
+  mreg       = list("linear"),
+  yreg       = "linear",   # linear probability model: effects on risk-difference scale;
+                            # avoids log-odds NaN from perfect separation in bootstrap samples
+  astar      = 0,
+  a          = 1,
+  mval       = list(mean(df_med$encountered_fakenews1_post, na.rm = TRUE)),
+  estimation = "imputation",
+  inference  = "bootstrap",
+  nboot      = NBOOT
+)
+
+cat("Running mediation for Trump vote...\n")
+res_trump <- cmest(
+  data       = df_med,
+  model      = "rb",
+  outcome    = "voted_trump_2020",
+  exposure   = "untrustworthy_flag",
+  mediator   = "encountered_fakenews1_post",
+  basec      = basec_vars,
+  EMint      = TRUE,
+  mreg       = list("linear"),
+  yreg       = "linear",
+  astar      = 0,
+  a          = 1,
+  mval       = list(mean(df_med$encountered_fakenews1_post, na.rm = TRUE)),
+  estimation = "imputation",
+  inference  = "bootstrap",
+  nboot      = NBOOT
+)
+```
+
+```{r results-tables}
+# Helper: pull the five key effects from a cmest object into a tidy data frame
+extract_effects <- function(res, outcome_label) {
+  keys <- c("te", "pnde", "tnde", "pnie", "tnie")
+  data.frame(
+    outcome  = outcome_label,
+    effect   = c("TE", "PNDE", "TNDE", "PNIE", "TNIE"),
+    estimate = res$effect.pe[keys],
+    ci_lower = res$effect.ci.low[keys],
+    ci_upper = res$effect.ci.high[keys],
+    pvalue   = res$effect.pval[keys],
+    stringsAsFactors = FALSE,
+    row.names = NULL
+  )
+}
+
+results_biden <- extract_effects(res_biden, "Voted Biden")
+results_trump <- extract_effects(res_trump, "Voted Trump")
+
+all_results <- bind_rows(results_biden, results_trump) %>%
+  mutate(
+    effect_category = case_when(
+      effect == "TE"                    ~ "Total Effect",
+      effect %in% c("PNDE", "TNDE")    ~ "Natural Direct Effect",
+      effect %in% c("PNIE", "TNIE")    ~ "Natural Indirect Effect"
+    ),
+    significant = pvalue < 0.05
+  )
+
+# Print summary table
+summary_table <- all_results %>%
+  mutate(
+    CI       = sprintf("(%.3f, %.3f)", ci_lower, ci_upper),
+    estimate = round(estimate, 4),
+    pvalue   = round(pvalue, 4),
+    sig      = ifelse(significant, "*", "")
+  ) %>%
+  dplyr::select(outcome, effect, estimate, CI, pvalue, sig)
+
+cat("=== Mediation Results (Log-Odds Scale) ===\n")
+print(summary_table)
+```
+
+```{r forest-plot, fig.width=10, fig.height=6}
+effect_colors <- c(
+  "Total Effect"            = "gray50",
+  "Natural Direct Effect"   = "#0072B2",
+  "Natural Indirect Effect" = "#009E73"
+)
+
+plot_data <- all_results %>%
+  mutate(
+    effect          = factor(effect, levels = c("TE", "PNDE", "TNDE", "PNIE", "TNIE")),
+    effect_category = factor(effect_category,
+                             levels = c("Total Effect",
+                                        "Natural Direct Effect",
+                                        "Natural Indirect Effect")),
+    outcome         = factor(outcome, levels = c("Voted Biden", "Voted Trump")),
+    shape_type      = ifelse(significant, 16, 1)
+  )
+
+forest_plot <- ggplot(plot_data,
+                      aes(x = estimate, y = effect,
+                          color = effect_category,
+                          shape = as.factor(shape_type))) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbarh(aes(xmin = ci_lower, xmax = ci_upper),
+                 height = 0.25, linewidth = 0.8) +
+  geom_point(size = 3.5) +
+  facet_wrap(~ outcome, ncol = 2, scales = "free_x") +
+  scale_color_manual(values = effect_colors, name = "Effect Type") +
+  scale_shape_manual(
+    values = c("1" = 1, "16" = 16),
+    labels = c("1" = "Non-significant", "16" = "p < 0.05"),
+    name   = "Significance"
+  ) +
+  labs(
+    x        = "Effect Estimate — Risk Difference Scale (95% Bootstrap CI)",
+    y        = "Effect Type",
+    title    = "Effect of Untrustworthy News Exposure on 2020 Vote Choice",
+    subtitle = "Mediator: Encountered Fake News Post-Treatment  |  Covariates: age, sex, ideology, PID, education, race, region, media use, 2016 vote"
+  ) +
+  theme_bw() +
+  theme(
+    strip.text         = element_text(size = 11, face = "bold"),
+    strip.background   = element_rect(fill = "gray90"),
+    panel.grid.major.y = element_line(color = "gray95"),
+    panel.grid.minor   = element_blank(),
+    axis.text          = element_text(size = 9),
+    axis.title         = element_text(size = 10),
+    plot.title         = element_text(size = 12, face = "bold", hjust = 0.5),
+    plot.subtitle      = element_text(size = 7.5, hjust = 0.5, color = "gray40"),
+    legend.position    = "bottom",
+    legend.box         = "vertical"
+  )
+
+print(forest_plot)
+ggsave("mediation_forest_plot.png", forest_plot, width = 10, height = 6, dpi = 300)
+```
+
+```{r sensitivity-analysis}
+# E-values for unmeasured confounding of the NIE pathway
+cat("=== E-Values: Biden Vote ===\n")
+sens_biden    <- cmsens(object = res_biden, sens = "uc")
+evalues_biden <- as.data.frame(sens_biden$evalues)
+print(evalues_biden[c("pnie", "tnie"), ])
+
+cat("\n=== E-Values: Trump Vote ===\n")
+sens_trump    <- cmsens(object = res_trump, sens = "uc")
+evalues_trump <- as.data.frame(sens_trump$evalues)
+print(evalues_trump[c("pnie", "tnie"), ])
+```
+
